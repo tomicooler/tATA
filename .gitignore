@@ -1,0 +1,5 @@
+**/build/*
+*.user
+**/*-Release/*
+**/*-Debug/*
+phonenum.h
