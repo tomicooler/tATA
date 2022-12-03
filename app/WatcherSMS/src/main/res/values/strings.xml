@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Watcher SMS</string>
+    <string name="preferences_title_pair_phone_number">Pair phone number</string>
+    <string name="preferences_summary_pair_phone_number">tATA Protector\'s phone number</string>
+    <string name="preferences_dialog_title_pair_phone_number">Enter the phone number</string>
+    <string name="preferences_title_sms_password">SMS password</string>
+    <string name="preferences_summary_sms_password">tATA Protector\'s SMS password</string>
+    <string name="preferences_dialog_title_sms_password">Enter the SMS password</string>
+</resources>

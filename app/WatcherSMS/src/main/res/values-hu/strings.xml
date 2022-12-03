@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Watcher SMS</string>
+    <string name="preferences_title_pair_phone_number">Másik telefonszám</string>
+    <string name="preferences_summary_pair_phone_number">tATA Protector telefon száma</string>
+    <string name="preferences_dialog_title_pair_phone_number">Add meg a telefon számot</string>
+    <string name="preferences_title_sms_password">SMS jelszó</string>
+    <string name="preferences_summary_sms_password">tATA Protector SMS jelszava</string>
+    <string name="preferences_dialog_title_sms_password">Add meg az SMS jelszót</string>
+</resources>

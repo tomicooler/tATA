@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_tata_title">tATA névjegye</string>
+    <string name="about_tata_intro">tATA a hobbi projektem, elsősorban saját használatra készült. Egy olyan megoldást akartam, amivel bármikor lekérdezhetem a kocsim helyzetét (akár csak egy SMS-el), valamint egy sokkal kifinomultabb riasztót, olyat ami hív ha baj van.</string>
+    <string name="about_tata_info">A tATA nem egy professzionális riasztó rendszer, használd saját felelőségedre.</string>
+    <string name="about_tata_regards">Használd nyugodtan ;)</string>
+    <string name="about_tata_myname">Dömők Tamás</string>
+    <string name="about_tata_licenses">Icons made by Freepik, Zurb, Icons8 from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0">CC BY 3.0</a>\n Icons made by Jim Ceasar, Designerz Base, WPZOOM <a href="https://www.iconfinder.com/icons/285810/auto_automobile_car_sedan_vehicle_icon#size=128" title="car">car</a>, <a href="https://www.iconfinder.com/icons/186381/eye_see_view_visible_watch_icon#size=128" title="eye">eye</a>, <a href="https://www.iconfinder.com/icons/111137/antivirus_shield_icon#size=128" title="shield">shield</a>\n <a href="http://romannurik.github.io/AndroidAssetStudio" title="AndroidAssetStudio">AndroidAssetStudio</a> was used to generate icons</string>
+    <string name="preferences_about_category">Névjegy</string>
+    <string name="preferences_title_about">Névjegy</string>
+    <string name="preferences_title_privacy">Adatvédelmi irányelvek</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_tata_title">About tATA</string>
+    <string name="about_tata_intro">tATA is my hobby project, I made it for my personal use. I wanted to be able to locate my car at anytime (even via SMS), and most importantly I wanted to have a more sophisticated alarm mechanism than the built-in ones. tATA calls you instead of annoying the people around the car.</string>
+    <string name="about_tata_info">Keep in mind that tATA is not a professional car alarm solution, use at your own risk.</string>
+    <string name="about_tata_regards">Have fun with it ;)</string>
+    <string name="about_tata_myname">Tamás Dömők</string>
+    <string name="about_tata_licenses">Icons made by Freepik, Zurb, Icons8 from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0">CC BY 3.0</a>\n Icons made by Jim Ceasar, Designerz Base, WPZOOM <a href="https://www.iconfinder.com/icons/285810/auto_automobile_car_sedan_vehicle_icon#size=128" title="car">car</a>, <a href="https://www.iconfinder.com/icons/186381/eye_see_view_visible_watch_icon#size=128" title="eye">eye</a>, <a href="https://www.iconfinder.com/icons/111137/antivirus_shield_icon#size=128" title="shield">shield</a>\n <a href="http://romannurik.github.io/AndroidAssetStudio" title="AndroidAssetStudio">AndroidAssetStudio</a> was used to generate icons</string>
+    <string name="preferences_about_category">About</string>
+    <string name="preferences_title_about">About</string>
+    <string name="preferences_title_privacy">Privacy Policy</string>
+</resources>

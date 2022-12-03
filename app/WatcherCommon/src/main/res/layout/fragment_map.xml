@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.gms.maps.MapView xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:map="http://schemas.android.com/apk/res-auto"
+        android:id="@+id/map"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#00000000"
+        android:clickable="true"
+        map:uiCompass="true"
+        map:uiZoomControls="true" />
+
+    <ToggleButton
+        android:id="@+id/serviceToggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginLeft="11dp"
+        android:layout_marginStart="11dp"
+        android:layout_alignParentTop="true"
+        android:layout_marginTop="11dp"
+        android:background="@drawable/ic_mapbutton"
+        android:button="@drawable/ic_service_toggle"
+        android:contentDescription="@string/map_service"
+        android:textColor="#222222"
+        android:textOff="@string/map_park_off"
+        android:textOn="@string/map_park_on" />
+
+    <ToggleButton
+        android:id="@+id/switchParkingSV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toRightOf="@id/serviceToggle"
+        android:layout_toEndOf="@id/serviceToggle"
+        android:layout_alignParentTop="true"
+        android:layout_marginTop="11dp"
+        android:background="@drawable/ic_mapbutton"
+        android:button="@drawable/ic_parking_toggle"
+        android:contentDescription="@string/map_parking"
+        android:textColor="#222222"
+        android:textOff="@string/map_park_off"
+        android:textOn="@string/map_park_on" />
+
+    <ImageButton
+        android:id="@+id/buttonRefresh"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentEnd="true"
+        android:layout_marginRight="11dp"
+        android:layout_marginEnd="11dp"
+        android:layout_marginTop="50dp"
+        android:background="@drawable/ic_mapbutton"
+        android:contentDescription="@string/map_refresh"
+        android:src="@drawable/ic_refresh" />
+
+    <ImageButton
+        android:id="@+id/buttonNavigate"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginBottom="11dp"
+        android:layout_marginLeft="11dp"
+        android:layout_marginStart="11dp"
+        android:background="@drawable/ic_mapbutton"
+        android:src="@drawable/ic_navigate"
+        android:contentDescription="@string/map_navigate"
+        />
+
+    <ImageButton
+        android:id="@+id/buttonCar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="11dp"
+        android:layout_toRightOf="@id/buttonNavigate"
+        android:layout_toEndOf="@id/buttonNavigate"
+        android:background="@drawable/ic_mapbutton"
+        android:contentDescription="@string/map_car"
+        android:src="@drawable/ic_car" />
+
+    <ImageButton
+        android:id="@+id/buttonPark"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="11dp"
+        android:layout_toRightOf="@id/buttonCar"
+        android:layout_toEndOf="@id/buttonCar"
+        android:background="@drawable/ic_mapbutton"
+        android:contentDescription="@string/map_park"
+        android:src="@drawable/ic_parking" />
+
+    <ImageButton
+        android:id="@+id/buttonMaybe"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="11dp"
+        android:layout_toRightOf="@id/buttonPark"
+        android:layout_toEndOf="@id/buttonPark"
+        android:background="@drawable/ic_mapbutton"
+        android:contentDescription="@string/map_call_me"
+        android:src="@drawable/ic_call_me" />
+</RelativeLayout>

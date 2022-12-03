@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_settings">Settings</string>
+    <string name="notification_text">Notification from Protector!</string>
+
+    <string name="map_refresh">Refresh</string>
+    <string name="map_parking">Park</string>
+    <string name="map_navigate">Navigate</string>
+    <string name="map_car">Show Car</string>
+    <string name="map_call_me">Call Me</string>
+    <string name="map_park_on">ON</string>
+    <string name="map_park_off">OFF</string>
+    <string name="map_park">Show Park</string>
+    <string name="map_service">Service</string>
+
+    <string name="map_battery">Battery</string>
+    <string name="map_unknown">unknown</string>
+    <string name="map_title_car_position">Car</string>
+
+    <string name="map_requesting_service_on">Turning service on…</string>
+    <string name="map_requesting_service_off">Turning service off…</string>
+    <string name="map_requesting_park_on">Turning park on…</string>
+    <string name="map_requesting_park_off">Turning park off…</string>
+    <string name="map_requesting_call_me">Call me…</string>
+    <string name="map_requesting_update">Updating…</string>
+
+    <string name="map_disable_buttons">App won\'t work without permission for SMS</string>
+
+    <string name="preferences_title_my_phone_number">Phone Number</string>
+    <string name="preferences_summary_my_phone_number">Phone Number is used for the Call Me command.</string>
+    <string name="preferences_dialog_title_my_phone_number">Enter your phone number</string>
+
+    <string name="preferences_title_button_share_my_id">Share My ID</string>
+    <string name="preferences_title_button_enter_pair_id">Enter Pair ID</string>
+
+    <string name="status_park_detected">Parking detected!</string>
+    <string name="status_car_theft">Car theft detected!</string>
+    <string name="status_park_location_updated">Park location updated!</string>
+    <string name="last_update_without_location">No location received for the last update.</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="popup_title" type="color">#c8000000</item>
+    <item name="popup_snippet" type="color">#8c000000</item>
+</resources>

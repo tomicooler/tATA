@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_settings">Beállítások</string>
+    <string name="notification_text">Üzenet a Protector-tól!</string>
+
+    <string name="map_refresh">Frissítés</string>
+    <string name="map_parking">Parkolás</string>
+    <string name="map_navigate">Navigálás</string>
+    <string name="map_car">Mutasd a kocsit</string>
+    <string name="map_call_me">Hívj fel</string>
+    <string name="map_park_on">BE</string>
+    <string name="map_park_off">KI</string>
+    <string name="map_park">Mutasd a parkolást</string>
+    <string name="map_service">Riasztó</string>
+
+    <string name="map_battery">Akksi</string>
+    <string name="map_unknown">ismeretlen</string>
+    <string name="map_title_car_position">Kocsi</string>
+
+    <string name="map_requesting_service_on">Riasztó bekapcsolása…</string>
+    <string name="map_requesting_service_off">Riasztó kikapcsolása…</string>
+    <string name="map_requesting_park_on">Parkolás aktiválása…</string>
+    <string name="map_requesting_park_off">Parkolás deaktiválása…</string>
+    <string name="map_requesting_call_me">Hívj fel…</string>
+    <string name="map_requesting_update">Frissítés…</string>
+
+    <string name="map_disable_buttons">Hiányzó jogosultság (SMS)</string>
+
+    <string name="preferences_title_my_phone_number">Telefonszám</string>
+    <string name="preferences_summary_my_phone_number">Telefonszám a Hívj fel parancshoz.</string>
+    <string name="preferences_dialog_title_my_phone_number">Add meg a telefonszámot</string>
+
+    <string name="preferences_title_button_share_my_id">ID megosztása</string>
+    <string name="preferences_title_button_enter_pair_id">ID megadása</string>
+
+    <string name="status_park_detected">Parkolás detektálva!</string>
+    <string name="status_car_theft">Kocsi lopás detekálva!</string>
+    <string name="status_park_location_updated">Parkolási pozíció frissítve!</string>
+    <string name="last_update_without_location">Az utolsó frissítésnél nem jött pozíció.</string>
+</resources>
