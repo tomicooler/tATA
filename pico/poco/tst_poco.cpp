@@ -164,7 +164,7 @@ void testHumanSerializationProtector() {
       "http://maps.google.com/?q=46.7624859,18.6304591\n\n"
       "250.25 meters, 89.12 %, 12/03/22 15:25:42 CET\n\n"
       "Service on\n\n"
-      "Park distance 5.00 meters\n\n"s,
+      "Park distance 72519.74 meters\n\n"s,
   };
 
   const auto testData = testDataProtector();

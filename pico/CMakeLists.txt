@@ -31,6 +31,7 @@ add_compile_options(
 )
 
 add_subdirectory(poco)
+add_subdirectory(lib)
 
 if(BUILD_FOR_PICO)
     add_subdirectory(app)

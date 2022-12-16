@@ -11,6 +11,7 @@ add_library(poco
     debug.h
 )
 set_target_properties(poco PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(poco PRIVATE tata_lib)
 
 if(NOT BUILD_FOR_PICO)
     add_executable(tst_poco

@@ -1,14 +1,8 @@
 #include "human.h"
+#include "../lib/location.h"
 #include "debug.h"
 
 using namespace PoCo;
-
-namespace {
-
-// TODO: implement
-double get_distance(const Position &a, const Position &b) { return 5.0; }
-
-} // namespace
 
 std::string Human::ProtectorS::serialize(const Protector &protector) const {
   std::ostringstream out;
@@ -36,8 +30,10 @@ std::string Human::ProtectorS::serialize(const Protector &protector) const {
   } else if (protector.parkLocation.has_value()) {
     out << "Park distance "
         << PoCo::to_string(static_cast<float>(
-               get_distance(protector.carLocation->position,
-                            protector.carLocation->position)))
+               getDistanceInMeter(protector.carLocation->position.latitude,
+                                  protector.carLocation->position.longitude,
+                                  protector.parkLocation->position.latitude,
+                                  protector.parkLocation->position.longitude)))
         << " meters\n\n";
   }
 

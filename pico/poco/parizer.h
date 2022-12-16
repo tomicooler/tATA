@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "protector.h"
 #include "watcher.h"
+#include "../lib/utils.h"
 
 namespace PoCo {
 
@@ -98,15 +99,7 @@ using Tokens = std::list<std::string>;
 
 Tokens tokenize(const std::string &str) {
   Tokens ret;
-
-  size_t start{};
-  size_t end{};
-
-  while ((start = str.find_first_not_of(DELIMITER, end)) != std::string::npos) {
-    end = str.find(DELIMITER, start);
-    ret.push_back(str.substr(start, end - start));
-  }
-
+  Utils::tokenize(ret, str, DELIMITER);
   return ret;
 }
 
