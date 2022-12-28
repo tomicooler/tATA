@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <fmt/chrono.h>
+#include <fmt/color.h>
 #include <fmt/printf.h>
 #include <string>
 #include <vector>
@@ -24,18 +25,24 @@ struct MockExecutor {
   std::vector<std::string> returns{};
   std::vector<std::chrono::nanoseconds> expectedSleeps{};
   std::vector<std::string> expectedWrites{};
+  size_t expectedRebootCount{};
 
+  // TODO: use unit test lib
+  //       current tests do not ensure that expecteds are exhausted
   size_t idxExecute{};
   size_t idxSleep{};
   size_t idxWrite{};
+  size_t rebootCount{};
 
   std::string execute(const std::string &c) {
-    fmt::print("  exec: '{}'", c);
+    fmt::print(fg(fmt::color::yellow), "{}", c);
     assert(idxExecute < expectedExecutes.size());
     assert(expectedExecutes.size() == returns.size());
-    fmt::print(" vs '{}'\n", expectedExecutes[idxExecute]);
+    fmt::print("  {}\n", expectedExecutes[idxExecute]);
     assert(c == expectedExecutes[idxExecute]);
-    return returns[idxExecute++];
+    auto resp = returns[idxExecute++];
+    fmt::print(fg(fmt::color::cyan), "{}\n", resp);
+    return resp;
   };
 
   void sleep(std::chrono::nanoseconds d) {
@@ -48,6 +55,12 @@ struct MockExecutor {
     fmt::print("  write: {}\n", d);
     assert(idxWrite < expectedWrites.size());
     assert(d == expectedWrites[idxWrite++]);
+  }
+
+  void reboot() {
+    fmt::print("  reboot: {}\n", rebootCount);
+    ++rebootCount;
+    assert(rebootCount <= expectedRebootCount);
   }
 };
 
