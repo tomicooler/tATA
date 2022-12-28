@@ -52,7 +52,7 @@ template <CExecutor Executor> struct Locator {
     if (!isSuccessfulReturn(ex.execute(AT::gpsPowerON))) {
       return std::nullopt;
     }
-    const auto gprsOFF = scope_exit{
+    const auto gpsOFF = scope_exit{
         [&]() { [[maybe_unused]] const auto _ = ex.execute(AT::gpsPowerOFF); }};
 
     std::optional<Location> loc;
