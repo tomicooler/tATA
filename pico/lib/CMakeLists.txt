@@ -7,6 +7,7 @@ add_library(tata_lib
     gsmlocator.h
     locationservice.h
     caller.h
+    smssender.h
 )
 set_target_properties(tata_lib PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(tata_lib PRIVATE fmt::fmt)
