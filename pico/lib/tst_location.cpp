@@ -1,20 +1,11 @@
-#include <cassert>
 #include <iostream>
 
 #include "gpslocator.h"
 #include "gsmlocator.h"
 #include "locationservice.h"
+#include "testutils.h"
 
 namespace {
-struct LogTest {
-  LogTest(std::string ctx) : ctx(std::move(ctx)) {
-    std::cout << "[" << this->ctx << "]\n";
-  }
-  ~LogTest() { std::cout << "[" << ctx << "] (PASS)\n"; }
-
-private:
-  std::string ctx;
-};
 
 using GPSGSMLocationService =
     LocationService<GPS::Locator<NoopExecutor>, GSM::Locator<NoopExecutor>>;
@@ -84,30 +75,12 @@ void testLocationService() {
   }
 }
 
-bool equal(double a, double b, double epsilon = 0.1) {
-  return std::fabs(a - b) < epsilon;
-}
-
 void testGetDistance() {
   LogTest t{"testGetDistance"};
   const auto dist =
       getDistanceInMeter(46.7624859, 18.6304591, 47.1258945, 17.8372091);
   assert(equal(dist, 72519.7));
 }
-
-struct MockExecutor {
-  std::vector<std::string> expectedCommands{};
-  std::vector<std::string> returns{};
-  size_t idx{};
-
-  std::string execute(const std::string &c) {
-    std::cout << "command:" << c << "\n";
-    assert(idx < expectedCommands.size());
-    assert(expectedCommands.size() == returns.size());
-    assert(c == expectedCommands[idx]);
-    return returns[idx++];
-  };
-};
 
 void testGPSLocator() {
   {
@@ -136,10 +109,10 @@ void testGPSLocator() {
     LogTest t{"testGPSLocator max retries reached"};
     MockExecutor ex{{{AT::gpsPowerON}}, {{AT::OK}}};
     for (int i = 0; i < GPS::Locator<MockExecutor>::MaxRetries; ++i) {
-      ex.expectedCommands.push_back(AT::gpsInfo);
+      ex.expectedExecutes.push_back(AT::gpsInfo);
       ex.returns.push_back("+CGNSINF: ,,,,\r\n\r\nOK\r\n");
     }
-    ex.expectedCommands.push_back(AT::gpsPowerOFF);
+    ex.expectedExecutes.push_back(AT::gpsPowerOFF);
     ex.returns.push_back(AT::OK);
     GPS::Locator locator{std::move(ex)};
     const auto loc = locator.getLocation();
@@ -158,10 +131,10 @@ void testGSMLocator() {
     LogTest t{"testGSMLocator"};
     GSM::Locator locator{MockExecutor{
         {{AT::gprsON},
-         {AT::setAPN},
+         fmt::format(AT::setAPN, "online"),
          {AT::bringUpWirelessGPRSorCSD},
          {AT::getLocalIPAddress},
-         {AT::setBearerAPN},
+         fmt::format(AT::setBearerAPN, "online"),
          {AT::setBearerGPRS},
          {AT::activateBearer},
          {AT::setLBSAddressFree},

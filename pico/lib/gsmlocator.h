@@ -2,6 +2,7 @@
 #define TATA_LIB_GSM_LOCATION
 
 #include <chrono>
+#include <fmt/core.h>
 #include <iomanip>
 #include <vector>
 
@@ -13,12 +14,11 @@
 namespace AT {
 constexpr char gprsON[] = "AT+CGATT=1";
 constexpr char gprsOFF[] = "AT+CGATT=0";
-constexpr char setAPN[] = "AT+CSTT=\"online\""; // TODO configurable APN
+constexpr char setAPN[] = "AT+CSTT=\"{}\"";
 constexpr char bringUpWirelessGPRSorCSD[] = "AT+CIICR";
 constexpr char getLocalIPAddress[] = "AT+CIFSR";
 constexpr char setBearerGPRS[] = "AT+SAPBR=3,1,\"Contype\",\"GPRS\"";
-constexpr char setBearerAPN[] =
-    "AT+SAPBR=3,1,\"APN\",\"online\""; // TODO configurable APN
+constexpr char setBearerAPN[] = "AT+SAPBR=3,1,\"APN\",\"{}\"";
 constexpr char activateBearer[] = "AT+SAPBR=1,1";
 constexpr char deactivateBearer[] = "AT+SAPBR=0,1";
 constexpr char setLBSAddressFree[] = "AT+CLBSCFG=1,3,\"lbs-simcom.com:3002\"";
@@ -45,7 +45,8 @@ enum class LocationType {
 template <CExecutor Executor> struct Locator {
   static constexpr int MaxRetries = 30;
 
-  constexpr Locator(Executor e) : ex(e) {}
+  constexpr Locator(Executor e, std::string apn = "online")
+      : ex(e), apn(std::move(apn)) {}
 
   [[nodiscard]] std::optional<Location> getLocation() {
     if (!isSuccessfulReturn(ex.execute(AT::gprsON))) {
@@ -54,7 +55,7 @@ template <CExecutor Executor> struct Locator {
     const auto gprsOFF = scope_exit{
         [&]() { [[maybe_unused]] const auto _ = ex.execute(AT::gprsOFF); }};
 
-    if (!isSuccessfulReturn(ex.execute(AT::setAPN))) {
+    if (!isSuccessfulReturn(ex.execute(fmt::format(AT::setAPN, apn)))) {
       return std::nullopt;
     }
 
@@ -66,7 +67,7 @@ template <CExecutor Executor> struct Locator {
       return std::nullopt;
     }
 
-    if (!isSuccessfulReturn(ex.execute(AT::setBearerAPN))) {
+    if (!isSuccessfulReturn(ex.execute(fmt::format(AT::setBearerAPN, apn)))) {
       return std::nullopt;
     }
 
@@ -123,6 +124,7 @@ template <CExecutor Executor> struct Locator {
 
 private:
   Executor ex;
+  std::string apn;
 };
 
 static_assert(CLocator<Locator<NoopExecutor>>);
