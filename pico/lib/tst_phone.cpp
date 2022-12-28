@@ -1,3 +1,4 @@
+#include "battery.h"
 #include "caller.h"
 #include "network.h"
 #include "smssender.h"
@@ -38,6 +39,7 @@ void testSMS() {
 }
 
 void testNetwork() {
+  LogTest t{"testNetwork"};
   Network n{MockExecutor{.expectedExecutes =
                              {
                                  {AT::enableEcho},
@@ -68,9 +70,66 @@ void testNetwork() {
   assert(n.start() == true);
 }
 
+void testBattery() {
+  {
+    LogTest t{"testBattery not charging"};
+    Bat::BatteryChecker b{MockExecutor{
+        .expectedExecutes =
+            {
+                {AT::checkBattery},
+            },
+        .returns =
+            {
+                {"+CBC: 0,50,300\r\n\r\nOK\r\n"},
+            },
+    }};
+    const auto bat = b.getBattery();
+    assert(bat.status == Bat::Battery::Status::NotCharging);
+    assert(equal(bat.percentage, 0.5f));
+    assert(bat.milliVolts == 300);
+  }
+
+  {
+    LogTest t{"testBattery charging"};
+    Bat::BatteryChecker b{MockExecutor{
+        .expectedExecutes =
+            {
+                {AT::checkBattery},
+            },
+        .returns =
+            {
+                {"+CBC: 1,75,450\r\n\r\nOK\r\n"},
+            },
+    }};
+    const auto bat = b.getBattery();
+    assert(bat.status == Bat::Battery::Status::Charging);
+    assert(equal(bat.percentage, 0.75f));
+    assert(bat.milliVolts == 450);
+  }
+
+  {
+    LogTest t{"testBattery full"};
+    Bat::BatteryChecker b{MockExecutor{
+        .expectedExecutes =
+            {
+                {AT::checkBattery},
+            },
+        .returns =
+            {
+                {"+CBC: 2,100,600\r\n\r\nOK\r\n"},
+            },
+    }};
+    const auto bat = b.getBattery();
+    assert(bat.status == Bat::Battery::Status::Full);
+    assert(equal(bat.percentage, 1.0f));
+    assert(bat.milliVolts == 600);
+  }
+}
+
 int main(int argc, char *argv[]) {
   testCall();
   testSMS();
   testNetwork();
+  testBattery();
   return 0;
 }
