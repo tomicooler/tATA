@@ -2,7 +2,6 @@
 #define TATA_LIB_SMSSENDER
 
 #include <chrono>
-#include <fmt/printf.h>
 
 #include "executor.h"
 

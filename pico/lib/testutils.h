@@ -2,9 +2,7 @@
 #define TATA_LIB_TESTUTILS
 
 #include <cassert>
-#include <fmt/chrono.h>
-#include <fmt/color.h>
-#include <fmt/printf.h>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -12,9 +10,9 @@
 
 struct LogTest {
   LogTest(std::string ctx) : ctx(std::move(ctx)) {
-    fmt::print("[{}]\n", this->ctx);
+    printf("[%s]\n", this->ctx.c_str());
   }
-  ~LogTest() { fmt::print("[{}]  (PASS)\n", this->ctx); }
+  ~LogTest() { printf("[%s]  (PASS)\n", this->ctx.c_str()); }
 
 private:
   std::string ctx;
@@ -35,30 +33,31 @@ struct MockExecutor {
   size_t rebootCount{};
 
   std::string execute(const std::string &c) {
-    fmt::print(fg(fmt::color::yellow), "{}", c);
+    printf("%s", c.c_str());
     assert(idxExecute < expectedExecutes.size());
     assert(expectedExecutes.size() == returns.size());
-    fmt::print("  {}\n", expectedExecutes[idxExecute]);
+    printf("  %s\n", expectedExecutes[idxExecute].c_str());
     assert(c == expectedExecutes[idxExecute]);
     auto resp = returns[idxExecute++];
-    fmt::print(fg(fmt::color::cyan), "{}\n", resp);
+    printf("%s\n", resp.c_str());
     return resp;
   };
 
   void sleep(std::chrono::nanoseconds d) {
-    fmt::print("  sleep: {}\n", d);
+    printf("  sleep: %ull\n",
+           std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
     assert(idxSleep < expectedSleeps.size());
     assert(d == expectedSleeps[idxSleep++]);
   }
 
   void write(const std::string &d) {
-    fmt::print("  write: {}\n", d);
+    printf("  write: %s\n", d.c_str());
     assert(idxWrite < expectedWrites.size());
     assert(d == expectedWrites[idxWrite++]);
   }
 
   void reboot() {
-    fmt::print("  reboot: {}\n", rebootCount);
+    printf("  reboot: %d\n", rebootCount);
     ++rebootCount;
     assert(rebootCount <= expectedRebootCount);
   }

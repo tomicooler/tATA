@@ -2,7 +2,6 @@
 #define TATA_LIB_GSM_LOCATION
 
 #include <chrono>
-#include <fmt/core.h>
 #include <iomanip>
 #include <vector>
 

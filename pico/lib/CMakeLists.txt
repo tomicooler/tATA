@@ -12,7 +12,6 @@ add_library(tata_lib
     battery.h
 )
 set_target_properties(tata_lib PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(tata_lib PRIVATE fmt::fmt)
 
 if(NOT BUILD_FOR_PICO)
     enable_testing()

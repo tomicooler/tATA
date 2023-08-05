@@ -2,7 +2,6 @@
 #define TATA_LIB_BATTERY
 
 #include <chrono>
-#include <fmt/printf.h>
 #include <iomanip>
 #include <vector>
 

@@ -2,7 +2,6 @@
 #define TATA_LIB_NETWORK
 
 #include <chrono>
-#include <fmt/printf.h>
 
 #include "executor.h"
 
@@ -23,7 +22,7 @@ template <CExecutor Executor> struct Network {
   [[nodiscard]] bool start() {
     using namespace std::chrono_literals;
 
-    fmt::print("#Network - starting up\n");
+    printf("#Network - starting up\n");
 
     for (;;) {
       if (!isSuccessfulReturn(ex.execute(AT::enableEcho))) {
@@ -33,16 +32,16 @@ template <CExecutor Executor> struct Network {
       ex.sleep(2s);
 
       if (!isSuccessfulReturn(ex.execute(AT::init))) {
-        fmt::print("#Network - could not init, let's reboot...\n");
+        printf("#Network - could not init, let's reboot...\n");
         ex.reboot();
         ex.sleep(2s);
       } else {
-        fmt::print("#Network - init successful\n");
+        printf("#Network - init successful\n");
         break;
       }
     }
 
-    fmt::print("#Network - checking network status...\n");
+    printf("#Network - checking network status...\n");
     for (;;) {
       if (const auto ret = ex.execute(AT::checkNetworkStatus);
           !isSuccessfulReturn(ret) || ret.find("0,1") == std::string::npos) {
@@ -65,7 +64,7 @@ template <CExecutor Executor> struct Network {
       return false;
     }
 
-    fmt::print("#Network - started\n");
+    printf("#Network - started\n");
     return true;
   }
 

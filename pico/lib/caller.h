@@ -2,9 +2,9 @@
 #define TATA_LIB_CALLER
 
 #include <chrono>
-#include <fmt/printf.h>
 
 #include "executor.h"
+#include "utils.h"
 
 namespace AT {
 constexpr char setAUXAudio[] = "AT+CHFA=1";
