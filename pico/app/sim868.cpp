@@ -99,5 +99,6 @@ std::string Sim868::sendCommand(const std::string &command,
 
   printf("  Response: '%s'\n", response.c_str());
   printf("<Sim868::sendCommand\n");
+  sleep_ms(1000);
   return response;
 }

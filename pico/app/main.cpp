@@ -196,6 +196,139 @@ void getBattery() {
   }
 }
 
+namespace Commands{
+//Command setSMSTextMode{"AT+CMGF=1", OK};
+Command checkSMSStorage{"AT+CMGL=?", OK};
+Command listSMSAll{"AT+CMGL=\"ALL\"", OK};
+//Command setSMSTextMode{"AT+CMGF=1", OK};
+//Command setSMSTextMode{"AT+CMGF=1", OK};
+}
+
+// Sleep related stuff:
+// https://github.com/Xinyuan-LilyGO/LilyGo-T-Call-SIM800/issues/97
+// https://docs.rs-online.com/2190/0900766b815ca94b.pdf
+void checkSMS() {
+  using namespace Commands;
+
+  std::vector<Command> commands{
+                                setSMSTextMode,
+      Command{"AT+CSCS=\"GSM\"", "OK"},
+   //   Command{"AT+CMGS=\"+3620xxxxxxx\"", ">"}, // send sms to myself
+      };
+
+  for (const auto &c : commands) {
+    const auto resp = Sim868::sendCommand(c.command);
+    if (resp.find(c.response) == std::string::npos) {
+      printf("command failed %s\n", c.command.c_str());
+    }
+  }
+
+ // std::string msg = std::string{"hello world!"} + std::string{'\x1A'};
+ // uart_puts(uart0, msg.c_str());
+
+  std::vector<Command> commands2{
+                                Command{"AT+CMGR=1", "OK"},
+                                Command{"AT+CMGR=1", "OK"},
+      Command{"AT+CMGL=\"ALL\"", "OK"},
+                                };
+
+  for (const auto &c : commands2) {
+    const auto resp = Sim868::sendCommand(c.command);
+    if (resp.find(c.response) == std::string::npos) {
+      printf("command failed %s\n", c.command.c_str());
+    }
+  }
+
+}
+
+static char event_str[128];
+
+static const char *gpio_irq_str[] = {
+    "LEVEL_LOW",  // 0x1
+    "LEVEL_HIGH", // 0x2
+    "EDGE_FALL",  // 0x4
+    "EDGE_RISE"   // 0x8
+};
+
+void gpio_event_string(char *buf, uint32_t events) {
+  for (uint i = 0; i < 4; i++) {
+    uint mask = (1 << i);
+    if (events & mask) {
+      // Copy this event string into the user string
+      const char *event_str = gpio_irq_str[i];
+      while (*event_str != '\0') {
+        *buf++ = *event_str++;
+      }
+      events &= ~mask;
+
+             // If more events add ", "
+      if (events) {
+        *buf++ = ',';
+        *buf++ = ' ';
+      }
+    }
+  }
+  *buf++ = '\0';
+}
+
+void gpio_callback(uint gpio, uint32_t events) {
+  // Put the GPIO event(s) that just happened into event_str
+  // so we can print it
+  gpio_event_string(event_str, events);
+  printf("GPIO %d %s\n", gpio, event_str);
+}
+
+static const uint CHARGE_GPIO = 24;
+
+void detectCharge() {
+  gpio_init(CHARGE_GPIO);
+  bool charging = gpio_get(CHARGE_GPIO) != 0;
+  printf("CHARGING??? %s\n", charging ? "YES" : "NO");
+  //gpio_set_irq_enabled_with_callback(CHARGE_GPIO, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+  //while (true) {}
+}
+
+static const uint CALL_GPIO = 5;
+
+// Unsolicited e.g. new sms  +CMTI
+
+// UART1_RI Behaviors https://docs.rs-online.com/2190/0900766b815ca94b.pdf
+// standby high
+// sms 120ms low
+// call low until hangup/establish
+// UART1_RI is connected to Sim868 Pico Pin 7 (GP5) - Raspberry Pico Pin 7 (GP5) UART1 RX
+void detectSMSorCall() {
+  std::vector<Command> commands{
+      Command{"AT+CMEE=1", "OK"},
+      Command{"AT+CFUN?", "OK"},
+                                Command{"AT+CSCLK?", "OK"},
+                                Command{"AT+CLIP=1", "OK"},
+      Command{"AT+CCALR=?", "OK"},
+                                };
+
+  for (const auto &c : commands) {
+    const auto resp = Sim868::sendCommand(c.command);
+    if (resp.find(c.response) == std::string::npos) {
+      printf("command failed %s\n", c.command.c_str());
+    }
+  }
+
+  gpio_init(CALL_GPIO);
+  gpio_set_pulls(CALL_GPIO, true, false);
+  //gpio_set_dir(CALL_GPIO, GPIO_IN);
+  //gpio_set_irq_enabled_with_callback(CALL_GPIO, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+  int i = 0;
+  while (true) {
+    sleep_ms(50);
+    bool callOrSMS = gpio_get(CALL_GPIO) == 0;
+    printf("call or sms? %d %s\n", i, callOrSMS ? "YES" : "NO");
+    ++i;
+    while (uart_is_readable_within_us(uart0, 2000)) {
+      printf("%c", uart_getc(uart0));
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
   stdio_init_all();
 
@@ -204,12 +337,15 @@ int main(int argc, char *argv[]) {
 
   Sim868::start();
 
-  // getBattery();
    checkNetwork();
+   getBattery();
   // gsmLocation();
   // gpsLocation();
-   startCall();
+  // startCall();
   // sendSMS();
+   checkSMS();
+   detectCharge();
+   detectSMSorCall();
 
   printf("\nBYEBYE\n");
   stdio_flush();
