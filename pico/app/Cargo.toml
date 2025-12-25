@@ -1,0 +1,25 @@
+[package]
+name = "tATA-pico"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pico-lib = { path = "../pico-lib" }
+embassy-executor = {version = "0.8.0", features = ["arch-cortex-m", "executor-thread", "executor-interrupt"]}
+embassy-rp = {version = "0.7.0", features = ["unstable-pac", "time-driver", "critical-section-impl", "rp2040"]}
+embassy-time = "0.4.0"
+cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+cortex-m-rt = "0.7.0"
+critical-section = "1.1"
+panic-probe = "1.0.0"
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+embassy-sync = "0.7.1"
+embedded-alloc = "0.6.0"
+
+[[bin]]
+name = "tATA-pico"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false

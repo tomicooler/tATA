@@ -1,0 +1,10 @@
+[package]
+name = "pico-lib"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+machine-derive = { version = "0.1.0", path = "../machine-derive" }
+embedded-alloc = "0.6.0"
+libm = "0.2.11"
+fasttime = { version = "0.1", default-features = false }
