@@ -1,20 +1,37 @@
-# tATA
-the Anti Theft Auto - Pico SIM868
+# the Anti Theft Auto
 
-remaking my old android based app
+This is tATA on Raspberry [Pico Sim868-GSM/GPRS/GNS](https://www.waveshare.com/wiki/Pico-SIM868-GSM/GPRS/GNSS).
 
-TODO: proper readme
+## What is tATA?
 
-I'll try some new C++ features along the way, e.g.: concepts: https://www.youtube.com/watch?v=gTNJXVmuRRA&t=135s
+[![tATA video](https://img.youtube.com/vi/vHlMRs05CKg/0.jpg)](https://www.youtube.com/watch?v=vHlMRs05CKg)
 
+^ check the video.
 
-Building & Testing
-```
-mkdir build; cd build && cmake -DBUILD_FOR_PICO=OFF ../pico/ && make && make test
-mkdir build; cd build && cmake -DCMAKE_BUILD_TYPE=Debug ../pico && make && make test
-```
+Features:
 
-SMS commands
+- retrieve car location
+- location based car theft detection
+- spy on microphone
+- low battery alert
+
+This is a remake of my old android based application ([tATA Watcher SMS on Google Play](https://play.google.com/store/apps/details?id=com.tomicooler.tata.watchersms)). The goal is to re-create tATA Protector on Raspberry Pico.
+
+A pre-built apk can be downloaded from here: [WatcherSMS](https://github.com/tomicooler/tATAPowerDetector/raw/master/releases/watchersms.apk).
+
+NOTE. Work in Progress:
+
+- learning Rust on the way
+- pico app does nothing yet
+- cpp version with some Sim868 interfacing can be found on the [cpp-backup](https://github.com/tomicooler/tATA/tree/cpp-backup) branch
+
+## Project structure
+
+- app: the tATA Watcher SMS android application.
+- pico: the tATA Protector application for Raspberry RP2040 micro controller written in Rust.
+
+## SMS commands
+
 ```
 $tATA/location/12345
 $tATA/call/12345
@@ -22,25 +39,29 @@ $tATA/park [on/off]/12345
 $tATA/service [on/off]/12345
 ```
 
-Developer workflow with Raspberry Pi 3B
+TODO: configuration by SMS commands.
+
+## Development
+
+Building the uf2 file:
+
+```shell
+cd pico/app
+cargo run
 ```
-sudo nmap -p 22 192.168.50.0/24
 
-ssh pi@RASPBERRY_IP
+Running the tests, etc:
 
-# use sshfs to mount the project on the pi
-mkdir -p /home/pi/pico/tATA
-sshfs youruser@HOST_IP:/home/tomi/qt_workspace/pico/tATA /home/pi/pico/tATA
+```shell
+cd pico/pico-lib
+cargo test
+cargo check
+cargo fmt
+```
 
-cd ~/pico/tATA
+Reading the logs:
 
-# building on raspberry would require new gcc/clang
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Debug ../pico
-make
-
-openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program app/app.elf verify reset exit"
-
+```shell
 minicom -b 115200 -o -D /dev/serial0 # for uart
 minicom -b 115200 -o -D /dev/ttyACM0 # for usb
 ```
