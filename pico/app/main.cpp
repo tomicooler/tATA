@@ -230,6 +230,7 @@ void checkSMS() {
                                 Command{"AT+CMGR=1", "OK"},
                                 Command{"AT+CMGR=1", "OK"},
       Command{"AT+CMGL=\"ALL\"", "OK"},
+      //Command{"AT+CMGD=1,4", "OK"}, // delete all
                                 };
 
   for (const auto &c : commands2) {
@@ -327,6 +328,20 @@ void detectSMSorCall() {
       printf("%c", uart_getc(uart0));
     }
   }
+
+  tight_loop_contents();
+}
+
+static constexpr uint UART_TX_PIN0 = 0;
+static constexpr uint UART_RX_PIN0 = 1;
+
+void on_uart_rx() {
+  printf(" on uart rx1 \n");
+  while (uart_is_readable(uart0)) {
+    uint8_t ch = uart_getc(uart0);
+    printf("%d", ch, (int)ch);
+  }
+  printf(" on uart rx2 \n");
 }
 
 int main(int argc, char *argv[]) {
@@ -335,20 +350,42 @@ int main(int argc, char *argv[]) {
   Sim868::init();
   Sim868::ledBlink();
 
-  Sim868::start();
+  Sim868::start(); 
 
    checkNetwork();
    getBattery();
   // gsmLocation();
-  // gpsLocation();
+   gpsLocation();
   // startCall();
   // sendSMS();
    checkSMS();
    detectCharge();
-   detectSMSorCall();
+  // startCall();
+   //detectSMSorCall();
 
   printf("\nBYEBYE\n");
   stdio_flush();
+
+  // Set UART flow control CTS/RTS, we don't want these, so turn them off
+  uart_set_hw_flow(uart0, false, false);
+
+         // Turn off FIFO's - we want to do this character by character
+  uart_set_fifo_enabled(uart0, false);
+
+         // Set up a RX interrupt
+         // We need to set up the handler first
+         // Select correct interrupt for the UART we are using
+  int UART_IRQ = UART0_IRQ; //UART_ID == uart0 ? UART0_IRQ : UART1_IRQ;
+
+         // And set up and enable the interrupt handlers
+  irq_set_exclusive_handler(UART_IRQ, on_uart_rx);
+  irq_set_enabled(UART_IRQ, true);
+
+         // Now enable the UART to send interrupts - RX only
+  uart_set_irq_enables(uart0, true, false);
+
+  while (1)
+    tight_loop_contents();
 
   return 0;
 }
