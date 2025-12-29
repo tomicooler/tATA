@@ -1,0 +1,3 @@
+[toolchain]
+components = [ "rustfmt", "rustc-dev" ]
+targets = [ "thumbv6m-none-eabi" ]
