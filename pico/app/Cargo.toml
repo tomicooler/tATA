@@ -38,6 +38,10 @@ defmt = "1.0.1"
 defmt-rtt = "1.0.0"
 log = "0.4"
 
+atat = { version = "0.24.1", features = ["log", "heapless"] }
+static_cell = { version = "2" }
+portable-atomic = { version = "1.6.0", features = ["critical-section"] }
+
 [[bin]]
 name = "tATA-pico"
 path = "src/main.rs"

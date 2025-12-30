@@ -8,3 +8,4 @@ machine-derive = { version = "0.1.0", path = "../machine-derive" }
 embedded-alloc = "0.6.0"
 libm = "0.2.11"
 fasttime = { version = "0.1", default-features = false }
+atat = { version = "0.24.1", features = ["log", "heapless"] }
