@@ -1,15 +1,15 @@
 #![no_std]
 #![no_main]
 
+use core::ptr::addr_of_mut;
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
+use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
-use embassy_rp::gpio::{Level, Output};
 use embassy_time::{Duration, Timer};
-use {defmt_rtt as _, panic_probe as _};
 use embedded_alloc::LlffHeap as Heap;
-use core::ptr::addr_of_mut;
+use {defmt_rtt as _, panic_probe as _};
 
 use pico_lib::poro::{
     CarLocation, ParkLocation, Position, Protector, ProtectorMachine, Service, Status,
