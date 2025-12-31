@@ -37,7 +37,6 @@ mod tests {
     use super::*;
     use atat::AtatCmd;
     use atat::heapless::Vec;
-    use std::str::FromStr;
 
     fn zeros() -> Vec<u8, 127> {
         let mut buffer = Vec::<u8, 127>::new();
