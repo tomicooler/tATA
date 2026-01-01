@@ -11,6 +11,9 @@ use embassy_rp::gpio::{Level, Output, Pull};
 use embassy_rp::peripherals::{UART0, USB};
 use embassy_rp::uart::{self, BufferedInterruptHandler, BufferedUart, BufferedUartRx};
 use embassy_rp::usb::{Driver, InterruptHandler as UsbInterruptHandler};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::pubsub;
+use embassy_sync::pubsub::Subscriber;
 use embassy_time::{Duration, Timer};
 use embedded_alloc::LlffHeap as Heap;
 use static_cell::StaticCell;
@@ -18,7 +21,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use pico_lib::network;
 use pico_lib::poro;
-use pico_lib::urc::Urc;
+use pico_lib::urc;
 
 extern crate alloc;
 
@@ -107,9 +110,9 @@ async fn main(spawner: Spawner) {
     let (writer, reader) = uart.split();
 
     static RES_SLOT: ResponseSlot<INGRESS_BUF_SIZE> = ResponseSlot::new();
-    static URC_CHANNEL: UrcChannel<Urc, URC_CAPACITY, URC_SUBSCRIBERS> = UrcChannel::new();
+    static URC_CHANNEL: UrcChannel<urc::Urc, URC_CAPACITY, URC_SUBSCRIBERS> = UrcChannel::new();
     let ingress = Ingress::new(
-        DefaultDigester::<Urc>::default(),
+        DefaultDigester::<urc::Urc>::default(),
         INGRESS_BUF.init([0; INGRESS_BUF_SIZE]),
         &RES_SLOT,
         &URC_CHANNEL,
@@ -129,6 +132,10 @@ async fn main(spawner: Spawner) {
 
     Timer::after(Duration::from_millis(500)).await;
     log::info!("After spawning reader Task");
+
+    let sub = URC_CHANNEL.subscribe().unwrap();
+    spawner.spawn(urc_handler_task(sub)).unwrap();
+    log::info!("After spawning Urc Task");
 
     let mut led = Output::new(p.PIN_25, Level::Low);
 
@@ -170,8 +177,8 @@ async fn main(spawner: Spawner) {
 async fn ingress_task(
     mut ingress: Ingress<
         'static,
-        DefaultDigester<Urc>,
-        Urc,
+        DefaultDigester<urc::Urc>,
+        urc::Urc,
         INGRESS_BUF_SIZE,
         URC_CAPACITY,
         URC_SUBSCRIBERS,
@@ -180,6 +187,33 @@ async fn ingress_task(
 ) -> ! {
     log::info!("ingress task spawned...");
     ingress.read_from(&mut reader).await
+}
+
+#[embassy_executor::task]
+async fn urc_handler_task(
+    mut sub: Subscriber<
+        'static,
+        CriticalSectionRawMutex,
+        urc::Urc,
+        URC_CAPACITY,
+        URC_SUBSCRIBERS,
+        1,
+    >,
+) -> ! {
+    log::info!("Ucr Handler task spawned...");
+    loop {
+        let m = sub.next_message().await;
+        match m {
+            pubsub::WaitResult::Message(u) => match u {
+                urc::Urc::MessageWaitingIndication(_) => {
+                    log::info!("Handle Urc message MessageWaitingIndication");
+                }
+            },
+            pubsub::WaitResult::Lagged(b) => {
+                log::info!("Urc Lagged messages: {}", b);
+            }
+        }
+    }
 }
 
 #[embassy_executor::task]
