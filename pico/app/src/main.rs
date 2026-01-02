@@ -160,13 +160,34 @@ async fn main(spawner: Spawner) {
 
         match counter {
             2 => {
-                client.send(&network::ATE {}).await.ok();
+                client.send(&network::AtSetCommandEchoOn).await.ok();
             }
             3 => {
-                client.send(&network::AT {}).await.ok();
+                let r = client.send(&network::AtInit).await;
+                if r.is_err() {
+                    log::info!("AtInit failed");
+                }
             }
             4 => {
-                client.send(&network::CGREG {}).await.ok();
+                let r = client.send(&network::AtNetworkRegistrationRead).await;
+                match r {
+                    Ok(n) => {
+                        log::info!("network stat: {:?}", n.stat);
+                    }
+                    Err(_) => (),
+                }
+            }
+            5 => {
+                client.send(&network::AtEnterPinRead).await.ok();
+            }
+            6 => {
+                client
+                    .send(&network::AtSignalQualityReportExecute)
+                    .await
+                    .ok();
+            }
+            7 => {
+                client.send(&network::AtOperatorSelectionRead).await.ok();
             }
             _ => (),
         }
