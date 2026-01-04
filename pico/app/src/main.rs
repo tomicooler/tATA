@@ -339,12 +339,6 @@ async fn urc_handler_task(
         let m = sub.next_message().await;
         match m {
             pubsub::WaitResult::Message(u) => match u {
-                urc::Urc::CmeError(cme_error) => {
-                    log::info!("URC CmeError: {}", cme_error.err);
-                }
-                urc::Urc::CmsError(cms_error) => {
-                    log::info!("URC CmsError: {}", cms_error.err);
-                }
                 urc::Urc::CallReady => {
                     log::info!("URC CallReady");
                 }
