@@ -19,9 +19,9 @@ use embedded_alloc::LlffHeap as Heap;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
-use pico_lib::network;
 use pico_lib::poro;
 use pico_lib::urc;
+use pico_lib::{call, network};
 
 extern crate alloc;
 
@@ -77,14 +77,18 @@ async fn main(spawner: Spawner) {
     });
     log::info!("dumped {}", dumped);
 
+    let mut led = Output::new(p.PIN_25, Level::Low);
+
     let mut power = Output::new(p.PIN_14, Level::Low);
 
     let mut power_on_off = async || {
+        led.set_high();
         log::info!("power on");
         power.set_high();
         Timer::after_secs(2).await;
         power.set_low();
         log::info!("power off");
+        led.set_low();
     };
 
     power_on_off().await;
@@ -136,8 +140,193 @@ async fn main(spawner: Spawner) {
     let sub = URC_CHANNEL.subscribe().unwrap();
     spawner.spawn(urc_handler_task(sub)).unwrap();
     log::info!("After spawning Urc Task");
+    Timer::after(Duration::from_secs(2)).await;
 
-    let mut led = Output::new(p.PIN_25, Level::Low);
+    log::info!("BEGIN AtSetCommandEchoOff");
+    {
+        let r = client.send(&network::AtSetCommandEchoOff).await;
+        match r {
+            Ok(_) => {
+                log::info!("AtSetCommandEchoOff response ok");
+            }
+            Err(e) => log::info!("AtSetCommandEchoOff error: {:?}", e),
+        }
+    }
+    log::info!("END AtSetCommandEchoOff");
+
+    log::info!("BEGIN AtInit");
+    loop {
+        let r = client.send(&network::AtInit).await;
+        match r {
+            Ok(_) => {
+                log::info!("AtInit response ok");
+                break;
+            }
+            Err(e) => {
+                log::info!("AtInit error: {:?}", e);
+                power_on_off().await;
+            }
+        }
+    }
+    log::info!("END AtInit");
+
+    log::info!("BEGIN AtEnableOrDisableInitialURCPresentationWite");
+    {
+        let r = client
+            .send(&network::AtEnableOrDisableInitialURCPresentationWite { mode: 0 })
+            .await;
+        match r {
+            Ok(_) => {
+                log::info!("AtEnableOrDisableInitialURCPresentationWite response ok");
+            }
+            Err(e) => log::info!("AtEnableOrDisableInitialURCPresentationWite error: {:?}", e),
+        }
+    }
+    log::info!("END AtEnableOrDisableInitialURCPresentationWite");
+
+    log::info!("BEGIN AtNetworkRegistrationRead");
+    loop {
+        log::info!("->1");
+        let r = client.send(&network::AtNetworkRegistrationRead).await;
+        log::info!("->2");
+        // TODO: issue: USB Debug logging stop working after CREG and SMS Ready URC, the program does not crash, led is still blinking
+        /*
+
+        Sending command: "AT+CGREG?\r"
+        Received response (21/21): "+CGREG: 0,2"
+        ->2
+        AtNetworkRegistrationRead response ok: Searching
+        ->1
+        AtNetworkRegistrationRead response ok: Searching
+        Received URC/128 (13/13): "SMS Ready"
+        URC SMSReady
+        ->1
+        Sending command: "AT+CGREG?\r"
+        Got serial read error Other
+        Got serial read error Other
+        Received OK (6/6)
+        ->2
+        AtNetworkRegistrationRead error: Parse
+
+                 */
+        match r {
+            Ok(n) => {
+                log::info!("AtNetworkRegistrationRead response ok: {:?}", n.stat);
+                if n.stat == network::NetworkRegistrationStatus::Registered
+                    || n.stat == network::NetworkRegistrationStatus::RegisteredRoaming
+                {
+                    break;
+                }
+            }
+            Err(e) => log::info!("AtNetworkRegistrationRead error: {:?}", e),
+        }
+        Timer::after(Duration::from_secs(1)).await;
+    }
+    log::info!("END AtNetworkRegistrationRead");
+
+    log::info!("BEGIN AtSignalQualityReportExecute");
+    {
+        let r = client.send(&network::AtSignalQualityReportExecute).await;
+        match r {
+            Ok(n) => {
+                log::info!("AtSignalQualityReportExecute response ok: {:?}", n.rssi);
+            }
+            Err(e) => log::info!("AtSignalQualityReportExecute error: {:?}", e),
+        }
+    }
+    log::info!("END AtSignalQualityReportExecute");
+
+    log::info!("BEGIN AtEnterPinRead");
+    {
+        let r = client.send(&network::AtEnterPinRead).await;
+        match r {
+            Ok(n) => {
+                log::info!("AtEnterPinRead response ok: {:?}", n.code);
+                if n.code != "READY" {
+                    led.set_high();
+                    log::info!("DISABLE PIN ON SIM CARD!!!");
+                    Timer::after(Duration::from_secs(60)).await;
+                }
+            }
+            Err(e) => log::info!("AtEnterPinRead error: {:?}", e),
+        }
+    }
+    log::info!("END AtEnterPinRead");
+
+    log::info!("BEGIN AtSignalQualityReportExecute");
+    {
+        let r = client.send(&network::AtSignalQualityReportExecute).await;
+        match r {
+            Ok(n) => {
+                log::info!("AtSignalQualityReportExecute response ok: {:?}", n.rssi);
+            }
+            Err(e) => log::info!("AtSignalQualityReportExecute error: {:?}", e),
+        }
+    }
+    log::info!("END AtSignalQualityReportExecute");
+
+    log::info!("BEGIN AtOperatorSelectionRead");
+    {
+        let r = client.send(&network::AtOperatorSelectionRead).await;
+        match r {
+            Ok(n) => {
+                log::info!("AtOperatorSelectionRead response ok: {:?}", n.oper);
+            }
+            Err(e) => log::info!("AtOperatorSelectionRead error: {:?}", e),
+        }
+    }
+    log::info!("END AtOperatorSelectionRead");
+
+    for _ in 0..30 {
+        led.set_high();
+        Timer::after(Duration::from_millis(50)).await;
+        led.set_low();
+        Timer::after(Duration::from_millis(50)).await;
+    }
+
+    log::info!("BEGIN AtSwapAudioChannelsWrite");
+    {
+        let r = client
+            .send(&call::AtSwapAudioChannelsWrite {
+                n: call::AudioChannels::Main,
+            })
+            .await;
+        match r {
+            Ok(_) => {
+                log::info!("AtSwapAudioChannelsWrite response ok");
+            }
+            Err(e) => log::info!("AtSwapAudioChannelsWrite error: {:?}", e),
+        }
+    }
+    log::info!("END AtSwapAudioChannelsWrite");
+
+    log::info!("BEGIN AtDialNumber");
+    {
+        use atat::heapless::String;
+        let number = String::<16>::try_from("+36301234567").unwrap();
+        let r = client.send(&call::AtDialNumber { number: number }).await;
+        match r {
+            Ok(_) => {
+                log::info!("AtDialNumber response ok");
+            }
+            Err(e) => log::info!("AtDialNumber error: {:?}", e),
+        }
+    }
+    log::info!("END AtDialNumber");
+
+    Timer::after(Duration::from_secs(6)).await;
+
+    log::info!("BEGIN AtHangup");
+    {
+        let r = client.send(&call::AtHangup).await;
+        match r {
+            Ok(_) => {
+                log::info!("AtHangup response ok");
+            }
+            Err(e) => log::info!("AtHangup error: {:?}", e),
+        }
+    }
+    log::info!("END AtHangup");
 
     let mut counter = 0u8;
     loop {
@@ -157,40 +346,6 @@ async fn main(spawner: Spawner) {
 
         led.set_low();
         Timer::after(Duration::from_millis(500)).await;
-
-        match counter {
-            2 => {
-                client.send(&network::AtSetCommandEchoOn).await.ok();
-            }
-            3 => {
-                let r = client.send(&network::AtInit).await;
-                if r.is_err() {
-                    log::info!("AtInit failed");
-                }
-            }
-            4 => {
-                let r = client.send(&network::AtNetworkRegistrationRead).await;
-                match r {
-                    Ok(n) => {
-                        log::info!("network stat: {:?}", n.stat);
-                    }
-                    Err(_) => (),
-                }
-            }
-            5 => {
-                client.send(&network::AtEnterPinRead).await.ok();
-            }
-            6 => {
-                client
-                    .send(&network::AtSignalQualityReportExecute)
-                    .await
-                    .ok();
-            }
-            7 => {
-                client.send(&network::AtOperatorSelectionRead).await.ok();
-            }
-            _ => (),
-        }
     }
 }
 
@@ -226,8 +381,17 @@ async fn urc_handler_task(
         let m = sub.next_message().await;
         match m {
             pubsub::WaitResult::Message(u) => match u {
-                urc::Urc::MessageWaitingIndication(_) => {
-                    log::info!("Handle Urc message MessageWaitingIndication");
+                urc::Urc::CmeError(cme_error) => {
+                    log::info!("URC CmeError: {}", cme_error.err);
+                }
+                urc::Urc::CmsError(cms_error) => {
+                    log::info!("URC CmsError: {}", cms_error.err);
+                }
+                urc::Urc::CallReady => {
+                    log::info!("URC CallReady");
+                }
+                urc::Urc::SMSReady => {
+                    log::info!("URC SMSReady");
                 }
             },
             pubsub::WaitResult::Lagged(b) => {

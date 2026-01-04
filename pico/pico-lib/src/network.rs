@@ -3,8 +3,7 @@ use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 
-#[derive(Debug, Clone, AtatResp)]
-pub struct NoResponse;
+use crate::at::NoResponse;
 
 #[derive(Clone, Debug, AtatCmd)]
 #[at_cmd("AT", NoResponse, cmd_prefix = "", timeout_ms = 5000)]
@@ -14,8 +13,8 @@ pub struct AtInit;
 //  ATE1 - Echo On
 //  ATE0 - Echo Off
 #[derive(Clone, Debug, AtatCmd)]
-#[at_cmd("ATE1", NoResponse, cmd_prefix = "")]
-pub struct AtSetCommandEchoOn;
+#[at_cmd("ATE0", NoResponse, cmd_prefix = "")]
+pub struct AtSetCommandEchoOff;
 
 // 3.2.32 AT+CGREG Network Registration
 #[derive(Clone, Debug, AtatCmd)]
@@ -86,6 +85,13 @@ pub struct OperatorSelectionReadResponse {
     pub oper: Option<String<64>>,
 }
 
+// 6.2.33 AT+CIURC Enable or Disable Initial URC Presentation
+#[derive(Clone, Debug, AtatCmd)]
+#[at_cmd("+CIURC", NoResponse)]
+pub struct AtEnableOrDisableInitialURCPresentationWite {
+    pub mode: u8,
+}
+
 #[cfg(test)]
 extern crate std;
 
@@ -117,15 +123,15 @@ mod tests {
     }
 
     #[test]
-    fn test_set_command_echo_on() {
-        let cmd = AtSetCommandEchoOn;
+    fn test_set_command_echo_off() {
+        let cmd = AtSetCommandEchoOff;
         let mut buffer = zeros();
         assert_eq!(5, cmd.write(&mut buffer));
         assert_eq!(
             String::from_utf8(buffer)
                 .unwrap()
                 .trim_matches(char::from(0)),
-            "ATE1\r"
+            "ATE0\r"
         );
     }
 
@@ -255,6 +261,19 @@ mod tests {
                 oper: Some(String::try_from("PANNON GSM").unwrap())
             },
             cmd.parse(Ok(b"+CSQ: 0,0,\"PANNON GSM\"\r\n")).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_at_enable_or_disable_initial_urc_presentation_write() {
+        let cmd = AtEnableOrDisableInitialURCPresentationWite { mode: 0 };
+        let mut buffer = zeros();
+        assert_eq!(11, cmd.write(&mut buffer));
+        assert_eq!(
+            String::from_utf8(buffer)
+                .unwrap()
+                .trim_matches(char::from(0)),
+            "AT+CIURC=0\r"
         );
     }
 }
