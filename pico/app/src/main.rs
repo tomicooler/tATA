@@ -284,49 +284,7 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(50)).await;
     }
 
-    log::info!("BEGIN AtSwapAudioChannelsWrite");
-    {
-        let r = client
-            .send(&call::AtSwapAudioChannelsWrite {
-                n: call::AudioChannels::Main,
-            })
-            .await;
-        match r {
-            Ok(_) => {
-                log::info!("AtSwapAudioChannelsWrite response ok");
-            }
-            Err(e) => log::info!("AtSwapAudioChannelsWrite error: {:?}", e),
-        }
-    }
-    log::info!("END AtSwapAudioChannelsWrite");
-
-    log::info!("BEGIN AtDialNumber");
-    {
-        use atat::heapless::String;
-        let number = String::<16>::try_from("+36301234567").unwrap();
-        let r = client.send(&call::AtDialNumber { number: number }).await;
-        match r {
-            Ok(_) => {
-                log::info!("AtDialNumber response ok");
-            }
-            Err(e) => log::info!("AtDialNumber error: {:?}", e),
-        }
-    }
-    log::info!("END AtDialNumber");
-
-    Timer::after(Duration::from_secs(6)).await;
-
-    log::info!("BEGIN AtHangup");
-    {
-        let r = client.send(&call::AtHangup).await;
-        match r {
-            Ok(_) => {
-                log::info!("AtHangup response ok");
-            }
-            Err(e) => log::info!("AtHangup error: {:?}", e),
-        }
-    }
-    log::info!("END AtHangup");
+    call::call_number(&mut client, "+36301234567", Duration::from_secs(6)).await;
 
     let mut counter = 0u8;
     loop {

@@ -97,55 +97,52 @@ extern crate std;
 
 #[cfg(test)]
 mod tests {
+    use crate::cmd_serialization_tests;
+
     use super::*;
     use atat::AtatCmd;
-    use atat::heapless::Vec;
 
-    fn zeros() -> Vec<u8, 127> {
-        let mut buffer = Vec::<u8, 127>::new();
-        for _ in 0..127 {
-            let _ = buffer.push(0u8);
-        }
-        return buffer;
+    cmd_serialization_tests! {
+        test_at_init: (
+            AtInit,
+            3,
+            "AT\r",
+        ),
+        test_set_command_echo_off: (
+            AtSetCommandEchoOff,
+            5,
+            "ATE0\r",
+        ),
+        test_network_registration: (
+            AtNetworkRegistrationRead,
+            10,
+            "AT+CGREG?\r",
+        ),
+        test_enter_pin: (
+            AtEnterPinRead,
+            9,
+            "AT+CPIN?\r",
+        ),
+        test_signal_quality_report_execute: (
+            AtSignalQualityReportExecute,
+            7,
+            "AT+CSQ\r",
+        ),
+        test_operator_selection_read: (
+            AtOperatorSelectionRead,
+            9,
+            "AT+COPS?\r",
+        ),
+        test_at_enable_or_disable_initial_urc_presentation_write: (
+            AtEnableOrDisableInitialURCPresentationWite { mode: 0 },
+            11,
+            "AT+CIURC=0\r",
+        ),
     }
 
     #[test]
-    fn test_at_init() {
-        let cmd = AtInit {};
-        let mut buffer = zeros();
-        assert_eq!(3, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT\r"
-        );
-    }
-
-    #[test]
-    fn test_set_command_echo_off() {
-        let cmd = AtSetCommandEchoOff;
-        let mut buffer = zeros();
-        assert_eq!(5, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "ATE0\r"
-        );
-    }
-
-    #[test]
-    fn test_network_registration() {
+    fn test_network_registration_responses() {
         let cmd = AtNetworkRegistrationRead;
-        let mut buffer = zeros();
-        assert_eq!(10, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT+CGREG?\r"
-        );
 
         assert_eq!(
             NetworkRegistrationReadResponse {
@@ -199,16 +196,8 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_pin() {
+    fn test_enter_pin_responses() {
         let cmd = AtEnterPinRead;
-        let mut buffer = zeros();
-        assert_eq!(9, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT+CPIN?\r"
-        );
 
         assert_eq!(
             EnterPinReadResponse {
@@ -225,17 +214,8 @@ mod tests {
     }
 
     #[test]
-    fn test_signal_quality_report_execute() {
+    fn test_signal_quality_report_execute_responses() {
         let cmd = AtSignalQualityReportExecute;
-        let mut buffer = zeros();
-        assert_eq!(7, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT+CSQ\r"
-        );
-
         assert_eq!(
             SignalQualityReportResponse { rssi: 19, ber: 0 },
             cmd.parse(Ok(b"+CSQ: 19,0\r\n")).unwrap()
@@ -243,17 +223,8 @@ mod tests {
     }
 
     #[test]
-    fn test_operator_selection_read() {
+    fn test_operator_selection_read_responses() {
         let cmd = AtOperatorSelectionRead;
-        let mut buffer = zeros();
-        assert_eq!(9, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT+COPS?\r"
-        );
-
         assert_eq!(
             OperatorSelectionReadResponse {
                 mode: 0,
@@ -261,19 +232,6 @@ mod tests {
                 oper: Some(String::try_from("PANNON GSM").unwrap())
             },
             cmd.parse(Ok(b"+CSQ: 0,0,\"PANNON GSM\"\r\n")).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_at_enable_or_disable_initial_urc_presentation_write() {
-        let cmd = AtEnableOrDisableInitialURCPresentationWite { mode: 0 };
-        let mut buffer = zeros();
-        assert_eq!(11, cmd.write(&mut buffer));
-        assert_eq!(
-            String::from_utf8(buffer)
-                .unwrap()
-                .trim_matches(char::from(0)),
-            "AT+CIURC=0\r"
         );
     }
 }

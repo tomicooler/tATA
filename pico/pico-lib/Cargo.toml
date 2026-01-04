@@ -9,3 +9,18 @@ embedded-alloc = "0.6.0"
 libm = "0.2.11"
 fasttime = { version = "0.1", default-features = false }
 atat = { version = "0.24.1", features = ["log", "heapless"] }
+
+embassy-time = { version = "0.5.0", features = [
+    "defmt",
+    "defmt-timestamp-uptime",
+] }
+
+log = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+env_logger = { version = "0.9.1" }
+embassy-time = { version = "0.5.0", features = [
+    "defmt",
+    "defmt-timestamp-uptime",
+] }

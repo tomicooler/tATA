@@ -57,6 +57,8 @@ cd pico/pico-lib
 cargo test
 cargo check
 cargo fmt
+# run a specific test with env logger
+RUST_LOG=debug cargo test test_call_number -- --nocapture
 ```
 
 Reading the logs:
