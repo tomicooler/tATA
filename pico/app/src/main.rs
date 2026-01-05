@@ -284,7 +284,14 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(50)).await;
     }
 
-    call::call_number(&mut client, "+36301234567", Duration::from_secs(6)).await;
+    let mut sleeper = Sleeper;
+    call::call_number(
+        &mut client,
+        "+36301234567",
+        &mut sleeper,
+        Duration::from_secs(6).as_millis(),
+    )
+    .await;
 
     let mut counter = 0u8;
     loop {
@@ -364,4 +371,11 @@ fn convert_to_celsius(raw_temp: u16) -> f32 {
     let sign = if temp < 0.0 { -1.0 } else { 1.0 };
     let rounded_temp_x10: i16 = ((temp * 10.0) + 0.5 * sign) as i16;
     (rounded_temp_x10 as f32) / 10.0
+}
+
+struct Sleeper;
+impl call::Sleeper for Sleeper {
+    async fn sleep(&mut self, millis: u64) {
+        Timer::after(Duration::from_millis(millis)).await
+    }
 }

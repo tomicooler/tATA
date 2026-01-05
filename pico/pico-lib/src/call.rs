@@ -4,7 +4,6 @@ use atat::AtatCmd;
 use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::heapless::String;
-use embassy_time::Duration;
 
 use crate::at::NoResponse;
 use crate::utils::LogBE;
@@ -56,50 +55,53 @@ impl<'a> AtatCmd for AtDialNumber {
 #[at_cmd("+CHUP;", NoResponse)]
 pub struct AtHangup;
 
-pub async fn call_number<T: atat::asynch::AtatClient>(
+pub trait Sleeper {
+    fn sleep(&mut self, millis: u64) -> impl core::future::Future<Output = ()> + Send;
+}
+
+pub async fn call_number<T: atat::asynch::AtatClient, U: Sleeper>(
     client: &mut T,
     number: &'static str,
-    duration: Duration,
+    sleeper: &mut U,
+    duration_millis: u64,
 ) {
     {
-        let _ = LogBE::new("AtSwapAudioChannelsWrite".to_string());
+        let _l = LogBE::new("AtSwapAudioChannelsWrite".to_string());
         let r = client
             .send(&AtSwapAudioChannelsWrite {
                 n: AudioChannels::Main,
             })
             .await;
         match r {
-            Ok(_) => log::info!("OK"),
-            Err(e) => log::info!("ERROR: {:?}", e),
+            Ok(_) => log::info!("  OK"),
+            Err(e) => log::info!("  ERROR: {:?}", e),
         }
     }
 
     {
-        let _ = LogBE::new("AtDialNumber".to_string());
+        let _l = LogBE::new("AtDialNumber".to_string());
         let r = client
             .send(&AtDialNumber {
                 number: String::<16>::try_from(number).unwrap(),
             })
             .await;
         match r {
-            Ok(_) => log::info!("OK"),
-            Err(e) => log::info!("ERROR: {:?}", e),
+            Ok(_) => log::info!("  OK"),
+            Err(e) => log::info!("  ERROR: {:?}", e),
         }
     }
 
     {
-        LogBE::new(format!("Sleeping for duration {}", duration));
-        // todo unit test: undefined symbol: _embassy_time_schedule_wake (maybe? https://github.com/esp-rs/esp-hal/issues/1435)
-        // or just create a sleeper trait
-        //Timer::after(duration).await;
+        let _l = LogBE::new("Sleeping".to_string());
+        sleeper.sleep(duration_millis).await;
     }
 
     {
-        LogBE::new("AtHangup".to_string());
+        let _l = LogBE::new("AtHangup".to_string());
         let r = client.send(&AtHangup).await;
         match r {
-            Ok(_) => log::info!("OK"),
-            Err(e) => log::info!("ERROR: {:?}", e),
+            Ok(_) => log::info!("  OK"),
+            Err(e) => log::info!("  ERROR: {:?}", e),
         }
     }
 }
@@ -109,7 +111,7 @@ mod tests {
     use crate::{at, cmd_serialization_tests};
 
     use super::*;
-    use alloc::collections::vec_deque::VecDeque;
+    use alloc::{collections::vec_deque::VecDeque, vec::Vec};
     use atat::AtatCmd;
 
     cmd_serialization_tests! {
@@ -136,21 +138,29 @@ mod tests {
 
     use alloc::string::String as AString;
 
-    // TODO: try mock_all
-    struct ClientMock {
+    struct ClientMock<'a> {
         sent_commands: VecDeque<AString>,
-        //resuts: VecDeque<Result<Cmd::Response, atat::Error>>,
+        results: VecDeque<Result<&'a [u8], atat::InternalError<'a>>>,
     }
 
-    impl atat::asynch::AtatClient for ClientMock {
+    impl atat::asynch::AtatClient for ClientMock<'_> {
         async fn send<Cmd: AtatCmd>(&mut self, cmd: &Cmd) -> Result<Cmd::Response, atat::Error> {
             let mut buffer = crate::at::tests::zeros();
             cmd.write(&mut buffer);
             let tmp = String::from_utf8(buffer).unwrap();
             let trimmed = tmp.trim_matches(char::from(0));
             self.sent_commands.push_back(AString::from(trimmed));
-            //self.resuts.pop_front()
-            Err(atat::Error::Error)
+            cmd.parse(self.results.pop_front().expect("missing result"))
+        }
+    }
+
+    struct SleeperMock {
+        calls: Vec<u64>,
+    }
+
+    impl Sleeper for SleeperMock {
+        async fn sleep(&mut self, millis: u64) {
+            self.calls.push(millis);
         }
     }
 
@@ -160,9 +170,17 @@ mod tests {
 
         let mut client = ClientMock {
             sent_commands: VecDeque::new(),
-            //results: VecDeque::new(),
+            results: VecDeque::new(),
         };
-        call_number(&mut client, "+36301234567", Duration::from_millis(1)).await;
+        client.results.push_back(Ok("".as_bytes()));
+        client.results.push_back(Ok("".as_bytes()));
+        client.results.push_back(Ok("".as_bytes()));
+
+        let mut sleeper = SleeperMock { calls: Vec::new() };
+        call_number(&mut client, "+36301234567", &mut sleeper, 100).await;
         assert_eq!(3, client.sent_commands.len());
+        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
     }
 }
