@@ -85,13 +85,6 @@ pub struct OperatorSelectionReadResponse {
     pub oper: Option<String<64>>,
 }
 
-// 6.2.33 AT+CIURC Enable or Disable Initial URC Presentation
-#[derive(Clone, Debug, AtatCmd)]
-#[at_cmd("+CIURC", NoResponse)]
-pub struct AtEnableOrDisableInitialURCPresentationWite {
-    pub mode: u8,
-}
-
 #[cfg(test)]
 extern crate std;
 
@@ -132,11 +125,6 @@ mod tests {
             AtOperatorSelectionRead,
             9,
             "AT+COPS?\r",
-        ),
-        test_at_enable_or_disable_initial_urc_presentation_write: (
-            AtEnableOrDisableInitialURCPresentationWite { mode: 0 },
-            11,
-            "AT+CIURC=0\r",
         ),
     }
 

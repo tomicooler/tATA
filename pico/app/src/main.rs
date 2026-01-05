@@ -170,20 +170,6 @@ async fn main(spawner: Spawner) {
     }
     log::info!("END AtInit");
 
-    log::info!("BEGIN AtEnableOrDisableInitialURCPresentationWite");
-    {
-        let r = client
-            .send(&network::AtEnableOrDisableInitialURCPresentationWite { mode: 0 })
-            .await;
-        match r {
-            Ok(_) => {
-                log::info!("AtEnableOrDisableInitialURCPresentationWite response ok");
-            }
-            Err(e) => log::info!("AtEnableOrDisableInitialURCPresentationWite error: {:?}", e),
-        }
-    }
-    log::info!("END AtEnableOrDisableInitialURCPresentationWite");
-
     log::info!("BEGIN AtNetworkRegistrationRead");
     loop {
         log::info!("->1");
