@@ -1,7 +1,8 @@
 #![no_std]
 #![no_main]
 
-use atat::asynch::Client;
+use alloc::string::ToString;
+use atat::asynch::{AtatClient, Client};
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use embassy_executor::Spawner;
@@ -22,7 +23,8 @@ use {defmt_rtt as _, panic_probe as _};
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::{at, call, network, sms};
+use pico_lib::utils::LogBE;
+use pico_lib::{at, battery, call, network, sms};
 
 extern crate alloc;
 
@@ -139,6 +141,15 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(100)).await;
         pico.set_led_low();
         Timer::after(Duration::from_millis(100)).await;
+    }
+
+    {
+        let _l = LogBE::new("AtBatteryChargeExecute".to_string());
+        let r = client.send(&battery::AtBatteryChargeExecute).await;
+        match r {
+            Ok(b) => log::info!("  OK {:?}", b),
+            Err(e) => log::info!("  ERROR: {:?}", e),
+        }
     }
 
     call::call_number(
