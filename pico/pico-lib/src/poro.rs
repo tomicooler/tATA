@@ -9,6 +9,9 @@ use alloc::string::String;
 
 use fasttime::DateTime;
 
+// This is a serialization library that should have been a base64(protobuf()) back in 2014.
+// Kept it only to make it work with the existing Android Application.
+
 #[cfg(test)]
 extern crate std;
 

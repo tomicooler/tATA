@@ -1,3 +1,4 @@
+use alloc::string::String;
 use libm::{asin, cos, pow, sin, sqrt};
 
 // https://stackoverflow.com/questions/27928/calculate-distance-between-two-latitude-longitude-points-haversine-formula
@@ -10,6 +11,23 @@ pub fn get_distance_in_meters(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64
         + pow(sin(d_lon / 2.0f64), 2f64) * cos(lat1.to_radians()) * cos(lat2.to_radians());
     let c = 2.0f64 * asin(sqrt(a));
     return earth_radius_in_meters * c;
+}
+
+pub struct LogBE {
+    context: String,
+}
+
+impl LogBE {
+    pub fn new(context: String) -> Self {
+        log::info!("BEGIN {}", context);
+        LogBE { context: context }
+    }
+}
+
+impl Drop for LogBE {
+    fn drop(&mut self) {
+        log::info!("END {}", self.context);
+    }
 }
 
 #[cfg(test)]
