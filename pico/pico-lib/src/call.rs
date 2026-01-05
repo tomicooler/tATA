@@ -57,8 +57,8 @@ pub struct AtHangup;
 
 pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
-    number: &'static str,
     pico: &mut U,
+    number: &'static str,
     duration_millis: u64,
 ) {
     {
@@ -141,11 +141,11 @@ mod tests {
         client.results.push_back(Ok("".as_bytes()));
 
         let mut pico = crate::at::tests::PicoMock::default();
-        call_number(&mut client, "+36301234567", &mut pico, 100).await;
+        call_number(&mut client, &mut pico, "+36301234567", 100).await;
         assert_eq!(3, client.sent_commands.len());
         assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
-        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
-        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("ATD+36301234567,i;\r", client.sent_commands.get(1).unwrap());
+        assert_eq!("AT+CHUP;\r", client.sent_commands.get(2).unwrap());
 
         assert_eq!(1, pico.sleep_calls.len());
         assert_eq!(100u64, *pico.sleep_calls.get(0).unwrap());

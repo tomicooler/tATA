@@ -22,7 +22,7 @@ use {defmt_rtt as _, panic_probe as _};
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::{at, call, network};
+use pico_lib::{at, call, network, sms};
 
 extern crate alloc;
 
@@ -143,9 +143,17 @@ async fn main(spawner: Spawner) {
 
     call::call_number(
         &mut client,
-        "+36301234567",
         &mut pico,
+        "+36301234567",
         Duration::from_secs(6).as_millis(),
+    )
+    .await;
+
+    sms::send_sms(
+        &mut client,
+        &mut pico,
+        "+36301234567",
+        "this is a text message",
     )
     .await;
 
