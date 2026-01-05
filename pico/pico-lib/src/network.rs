@@ -1,9 +1,11 @@
+use alloc::string::ToString;
 use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 
 use crate::at::NoResponse;
+use crate::utils::LogBE;
 
 #[derive(Clone, Debug, AtatCmd)]
 #[at_cmd("AT", NoResponse, cmd_prefix = "", timeout_ms = 5000)]
@@ -88,9 +90,89 @@ pub struct OperatorSelectionReadResponse {
 #[cfg(test)]
 extern crate std;
 
+pub async fn init_network<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    pico: &mut U,
+) {
+    {
+        let _l = LogBE::new("AtSetCommandEchoOff".to_string());
+        let r = client.send(&AtSetCommandEchoOff).await;
+        match r {
+            Ok(_) => log::info!("  OK"),
+            Err(e) => log::info!("  ERROR: {:?}", e),
+        }
+    }
+
+    loop {
+        let _l = LogBE::new("AtInit".to_string());
+        let r = client.send(&AtInit).await;
+        match r {
+            Ok(_) => {
+                log::info!("  OK");
+                break;
+            }
+            Err(e) => {
+                log::info!("  ERROR: {:?}", e);
+                pico.power_on_off().await;
+            }
+        }
+    }
+
+    loop {
+        let _l = LogBE::new("AtNetworkRegistrationRead".to_string());
+        let r = client.send(&AtNetworkRegistrationRead).await;
+        match r {
+            Ok(n) => {
+                log::info!("  OK stat={:?}", n.stat);
+                if n.stat == NetworkRegistrationStatus::Registered
+                    || n.stat == NetworkRegistrationStatus::RegisteredRoaming
+                {
+                    break;
+                }
+            }
+            Err(e) => log::info!("  ERROR: {:?}", e),
+        }
+        pico.sleep(1000).await;
+    }
+
+    {
+        let _l = LogBE::new("AtEnterPinRead".to_string());
+        let r = client.send(&AtEnterPinRead).await;
+        match r {
+            Ok(n) => {
+                log::info!(" OK code={:?}", n.code);
+                if n.code != "READY" {
+                    pico.set_led_high();
+                    log::info!("  !!!DISABLE PIN ON SIM CARD!!!");
+                    pico.sleep(60 * 1000).await;
+                }
+            }
+            Err(e) => log::info!("  ERROR: {:?}", e),
+        }
+    }
+
+    {
+        let _l = LogBE::new("AtSignalQualityReportExecute".to_string());
+        let r = client.send(&AtSignalQualityReportExecute).await;
+        match r {
+            Ok(n) => log::info!(" OK rssi={:?}", n.rssi),
+            Err(e) => log::info!("  ERR: {:?}", e),
+        }
+    }
+
+    {
+        let _l = LogBE::new("AtOperatorSelectionRead".to_string());
+        let r = client.send(&AtOperatorSelectionRead).await;
+        match r {
+            Ok(n) => log::info!("  OK operator={:?}", n.oper),
+            Err(e) => log::info!("  ERROR: {:?}", e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::cmd_serialization_tests;
+    use crate::{at, cmd_serialization_tests};
 
     use super::*;
     use atat::AtatCmd;
@@ -221,5 +303,40 @@ mod tests {
             },
             cmd.parse(Ok(b"+CSQ: 0,0,\"PANNON GSM\"\r\n")).unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_init_network() {
+        at::tests::init_env_logger();
+
+        let mut client = crate::at::tests::ClientMock::default();
+        client.results.push_back(Ok("".as_bytes())); // ATE
+        client.results.push_back(Err(atat::InternalError::Error)); // AT
+        client.results.push_back(Ok("".as_bytes())); // AT retried
+        client.results.push_back(Ok("0,2".as_bytes())); // AT+CGREG Searching
+        client.results.push_back(Ok("0,1".as_bytes())); // AT+CGREG Ready
+        client.results.push_back(Ok("READY".as_bytes())); // AT+CPIN
+        client.results.push_back(Ok("19,0".as_bytes())); // AT+CSQ
+        client
+            .results
+            .push_back(Ok("0,0,\"PANNON GSM\"".as_bytes())); // AT+COPS
+
+        let mut pico = crate::at::tests::PicoMock::default();
+        init_network(&mut client, &mut pico).await;
+        assert_eq!(8, client.sent_commands.len());
+        assert_eq!("ATE0\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("AT\r", client.sent_commands.get(1).unwrap());
+        assert_eq!("AT\r", client.sent_commands.get(2).unwrap());
+        assert_eq!("AT+CGREG?\r", client.sent_commands.get(3).unwrap());
+        assert_eq!("AT+CGREG?\r", client.sent_commands.get(4).unwrap());
+        assert_eq!("AT+CPIN?\r", client.sent_commands.get(5).unwrap());
+        assert_eq!("AT+CSQ\r", client.sent_commands.get(6).unwrap());
+        assert_eq!("AT+COPS?\r", client.sent_commands.get(7).unwrap());
+
+        assert_eq!(1, pico.sleep_calls.len());
+        assert_eq!(1000u64, *pico.sleep_calls.get(0).unwrap());
+        assert_eq!(0, pico.set_led_high_calls);
+        assert_eq!(0, pico.set_led_low_calls);
+        assert_eq!(1, pico.set_power_on_off_calls);
     }
 }

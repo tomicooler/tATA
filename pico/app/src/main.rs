@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use atat::asynch::{AtatClient, Client};
+use atat::asynch::Client;
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use embassy_executor::Spawner;
@@ -19,9 +19,10 @@ use embedded_alloc::LlffHeap as Heap;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::{call, network};
+use pico_lib::{at, call, network};
 
 extern crate alloc;
 
@@ -77,22 +78,6 @@ async fn main(spawner: Spawner) {
     });
     log::info!("dumped {}", dumped);
 
-    let mut led = Output::new(p.PIN_25, Level::Low);
-
-    let mut power = Output::new(p.PIN_14, Level::Low);
-
-    let mut power_on_off = async || {
-        led.set_high();
-        log::info!("power on");
-        power.set_high();
-        Timer::after_secs(2).await;
-        power.set_low();
-        log::info!("power off");
-        led.set_low();
-    };
-
-    power_on_off().await;
-
     let mut adc = Adc::new(p.ADC, Irqs, Config::default());
     let mut p26 = Channel::new_pin(p.PIN_26, Pull::None);
     let mut ts = Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
@@ -142,146 +127,31 @@ async fn main(spawner: Spawner) {
     log::info!("After spawning Urc Task");
     Timer::after(Duration::from_secs(2)).await;
 
-    log::info!("BEGIN AtSetCommandEchoOff");
-    {
-        let r = client.send(&network::AtSetCommandEchoOff).await;
-        match r {
-            Ok(_) => {
-                log::info!("AtSetCommandEchoOff response ok");
-            }
-            Err(e) => log::info!("AtSetCommandEchoOff error: {:?}", e),
-        }
-    }
-    log::info!("END AtSetCommandEchoOff");
+    let mut pico = Pico {
+        led: Output::new(p.PIN_25, Level::Low),
+        power: Output::new(p.PIN_14, Level::Low),
+    };
 
-    log::info!("BEGIN AtInit");
-    loop {
-        let r = client.send(&network::AtInit).await;
-        match r {
-            Ok(_) => {
-                log::info!("AtInit response ok");
-                break;
-            }
-            Err(e) => {
-                log::info!("AtInit error: {:?}", e);
-                power_on_off().await;
-            }
-        }
-    }
-    log::info!("END AtInit");
-
-    log::info!("BEGIN AtNetworkRegistrationRead");
-    loop {
-        log::info!("->1");
-        let r = client.send(&network::AtNetworkRegistrationRead).await;
-        log::info!("->2");
-        // TODO: issue: USB Debug logging stop working after CREG and SMS Ready URC, the program does not crash, led is still blinking
-        /*
-
-        Sending command: "AT+CGREG?\r"
-        Received response (21/21): "+CGREG: 0,2"
-        ->2
-        AtNetworkRegistrationRead response ok: Searching
-        ->1
-        AtNetworkRegistrationRead response ok: Searching
-        Received URC/128 (13/13): "SMS Ready"
-        URC SMSReady
-        ->1
-        Sending command: "AT+CGREG?\r"
-        Got serial read error Other
-        Got serial read error Other
-        Received OK (6/6)
-        ->2
-        AtNetworkRegistrationRead error: Parse
-
-                 */
-        match r {
-            Ok(n) => {
-                log::info!("AtNetworkRegistrationRead response ok: {:?}", n.stat);
-                if n.stat == network::NetworkRegistrationStatus::Registered
-                    || n.stat == network::NetworkRegistrationStatus::RegisteredRoaming
-                {
-                    break;
-                }
-            }
-            Err(e) => log::info!("AtNetworkRegistrationRead error: {:?}", e),
-        }
-        Timer::after(Duration::from_secs(1)).await;
-    }
-    log::info!("END AtNetworkRegistrationRead");
-
-    log::info!("BEGIN AtSignalQualityReportExecute");
-    {
-        let r = client.send(&network::AtSignalQualityReportExecute).await;
-        match r {
-            Ok(n) => {
-                log::info!("AtSignalQualityReportExecute response ok: {:?}", n.rssi);
-            }
-            Err(e) => log::info!("AtSignalQualityReportExecute error: {:?}", e),
-        }
-    }
-    log::info!("END AtSignalQualityReportExecute");
-
-    log::info!("BEGIN AtEnterPinRead");
-    {
-        let r = client.send(&network::AtEnterPinRead).await;
-        match r {
-            Ok(n) => {
-                log::info!("AtEnterPinRead response ok: {:?}", n.code);
-                if n.code != "READY" {
-                    led.set_high();
-                    log::info!("DISABLE PIN ON SIM CARD!!!");
-                    Timer::after(Duration::from_secs(60)).await;
-                }
-            }
-            Err(e) => log::info!("AtEnterPinRead error: {:?}", e),
-        }
-    }
-    log::info!("END AtEnterPinRead");
-
-    log::info!("BEGIN AtSignalQualityReportExecute");
-    {
-        let r = client.send(&network::AtSignalQualityReportExecute).await;
-        match r {
-            Ok(n) => {
-                log::info!("AtSignalQualityReportExecute response ok: {:?}", n.rssi);
-            }
-            Err(e) => log::info!("AtSignalQualityReportExecute error: {:?}", e),
-        }
-    }
-    log::info!("END AtSignalQualityReportExecute");
-
-    log::info!("BEGIN AtOperatorSelectionRead");
-    {
-        let r = client.send(&network::AtOperatorSelectionRead).await;
-        match r {
-            Ok(n) => {
-                log::info!("AtOperatorSelectionRead response ok: {:?}", n.oper);
-            }
-            Err(e) => log::info!("AtOperatorSelectionRead error: {:?}", e),
-        }
-    }
-    log::info!("END AtOperatorSelectionRead");
+    network::init_network(&mut client, &mut pico).await;
 
     for _ in 0..30 {
-        led.set_high();
-        Timer::after(Duration::from_millis(50)).await;
-        led.set_low();
-        Timer::after(Duration::from_millis(50)).await;
+        pico.set_led_high();
+        Timer::after(Duration::from_millis(100)).await;
+        pico.set_led_low();
+        Timer::after(Duration::from_millis(100)).await;
     }
 
-    let mut sleeper = Sleeper;
     call::call_number(
         &mut client,
         "+36301234567",
-        &mut sleeper,
+        &mut pico,
         Duration::from_secs(6).as_millis(),
     )
     .await;
 
     let mut counter = 0u8;
     loop {
-        led.set_high();
+        pico.set_led_high();
         Timer::after(Duration::from_millis(500)).await;
 
         counter += 1;
@@ -295,7 +165,7 @@ async fn main(spawner: Spawner) {
             temp
         );
 
-        led.set_low();
+        pico.set_led_low();
         Timer::after(Duration::from_millis(500)).await;
     }
 }
@@ -359,9 +229,31 @@ fn convert_to_celsius(raw_temp: u16) -> f32 {
     (rounded_temp_x10 as f32) / 10.0
 }
 
-struct Sleeper;
-impl call::Sleeper for Sleeper {
+struct Pico<'a> {
+    led: Output<'a>,
+    power: Output<'a>,
+}
+
+impl at::PicoHW for Pico<'_> {
     async fn sleep(&mut self, millis: u64) {
         Timer::after(Duration::from_millis(millis)).await
+    }
+
+    fn set_led_high(&mut self) {
+        self.led.set_high();
+    }
+
+    fn set_led_low(&mut self) {
+        self.led.set_low();
+    }
+
+    async fn power_on_off(&mut self) {
+        self.led.set_high();
+        log::info!("power on");
+        self.power.set_high();
+        Timer::after_secs(2).await;
+        self.power.set_low();
+        log::info!("power off");
+        self.led.set_low();
     }
 }
