@@ -1,3 +1,4 @@
+use alloc::collections::vec_deque::VecDeque;
 use alloc::string::String;
 use libm::{asin, cos, pow, sin, sqrt};
 
@@ -11,6 +12,21 @@ pub fn get_distance_in_meters(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64
         + pow(sin(d_lon / 2.0f64), 2f64) * cos(lat1.to_radians()) * cos(lat2.to_radians());
     let c = 2.0f64 * asin(sqrt(a));
     return earth_radius_in_meters * c;
+}
+
+// todo research, how to do this
+pub fn estimate_gps_accuracy(_pdop: f64, _vdop: f64, _hdop: f64) -> f64 {
+    return 500.0;
+    //return sqrt(pow(pdop / 2.0, 2.0) + pow(vdop / 2.0, 2.0) + pow(hdop / 2.0, 2.0));
+}
+
+pub fn as_tokens(input: String, delimiter: &'static str) -> VecDeque<String> {
+    let parts = input.split(delimiter);
+    let mut tokens = VecDeque::new();
+    for part in parts {
+        tokens.push_back(String::from(part));
+    }
+    return tokens;
 }
 
 pub struct LogBE {
@@ -28,6 +44,20 @@ impl Drop for LogBE {
     fn drop(&mut self) {
         log::info!("END {}", self.context);
     }
+}
+
+pub async fn send_command_logged<T: atat::asynch::AtatClient, U: atat::AtatCmd>(
+    client: &mut T,
+    command: &U,
+    context: String,
+) -> Result<<U as atat::AtatCmd>::Response, atat::Error> {
+    let _l = LogBE::new(context);
+    let r = client.send(command).await;
+    match r.as_ref() {
+        Ok(_) => log::info!("  OK"), // TODO: {:?}, v ?
+        Err(e) => log::info!("  ERROR: {:?}", e),
+    }
+    return r;
 }
 
 #[cfg(test)]

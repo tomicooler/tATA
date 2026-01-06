@@ -5,6 +5,8 @@ extern crate alloc;
 pub mod at;
 pub mod battery;
 pub mod call;
+pub mod gps;
+pub mod location;
 pub mod network;
 pub mod poro;
 pub mod sms;

@@ -5,7 +5,7 @@ use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 
 use crate::at::NoResponse;
-use crate::utils::LogBE;
+use crate::utils::send_command_logged;
 
 #[derive(Clone, Debug, AtatCmd)]
 #[at_cmd("AT", NoResponse, cmd_prefix = "", timeout_ms = 5000)]
@@ -94,79 +94,74 @@ pub async fn init_network<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     pico: &mut U,
 ) {
-    {
-        let _l = LogBE::new("AtSetCommandEchoOff".to_string());
-        let r = client.send(&AtSetCommandEchoOff).await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
+    send_command_logged(
+        client,
+        &AtSetCommandEchoOff,
+        "AtSetCommandEchoOff".to_string(),
+    )
+    .await
+    .ok();
+
+    loop {
+        match send_command_logged(client, &AtInit, "AtInit".to_string()).await {
+            Ok(_) => break,
+            Err(_) => pico.power_on_off().await,
         }
     }
 
     loop {
-        let _l = LogBE::new("AtInit".to_string());
-        let r = client.send(&AtInit).await;
-        match r {
-            Ok(_) => {
-                log::info!("  OK");
-                break;
-            }
-            Err(e) => {
-                log::info!("  ERROR: {:?}", e);
-                pico.power_on_off().await;
-            }
-        }
-    }
-
-    loop {
-        let _l = LogBE::new("AtNetworkRegistrationRead".to_string());
-        let r = client.send(&AtNetworkRegistrationRead).await;
-        match r {
-            Ok(n) => {
-                log::info!("  OK stat={:?}", n.stat);
-                if n.stat == NetworkRegistrationStatus::Registered
-                    || n.stat == NetworkRegistrationStatus::RegisteredRoaming
+        match send_command_logged(
+            client,
+            &AtNetworkRegistrationRead,
+            "AtNetworkRegistrationRead".to_string(),
+        )
+        .await
+        {
+            Ok(v) => {
+                log::info!("  {:?}", v);
+                if v.stat == NetworkRegistrationStatus::Registered
+                    || v.stat == NetworkRegistrationStatus::RegisteredRoaming
                 {
                     break;
                 }
             }
-            Err(e) => log::info!("  ERROR: {:?}", e),
+            Err(_) => (),
         }
         pico.sleep(1000).await;
     }
 
-    {
-        let _l = LogBE::new("AtEnterPinRead".to_string());
-        let r = client.send(&AtEnterPinRead).await;
-        match r {
-            Ok(n) => {
-                log::info!(" OK code={:?}", n.code);
-                if n.code != "READY" {
-                    pico.set_led_high();
-                    log::info!("  !!!DISABLE PIN ON SIM CARD!!!");
-                    pico.sleep(60 * 1000).await;
-                }
+    match send_command_logged(client, &AtEnterPinRead, "AtEnterPinRead".to_string()).await {
+        Ok(v) => {
+            log::info!("  {:?}", v);
+            if v.code != "READY" {
+                pico.set_led_high();
+                log::info!("  !!!DISABLE PIN ON SIM CARD!!!");
+                pico.sleep(60 * 1000).await;
             }
-            Err(e) => log::info!("  ERROR: {:?}", e),
         }
+        Err(_) => (),
     }
 
+    match send_command_logged(
+        client,
+        &AtSignalQualityReportExecute,
+        "AtSignalQualityReportExecute".to_string(),
+    )
+    .await
     {
-        let _l = LogBE::new("AtSignalQualityReportExecute".to_string());
-        let r = client.send(&AtSignalQualityReportExecute).await;
-        match r {
-            Ok(n) => log::info!(" OK rssi={:?}", n.rssi),
-            Err(e) => log::info!("  ERR: {:?}", e),
-        }
+        Ok(v) => log::info!("  {:?}", v),
+        Err(_) => (),
     }
 
+    match send_command_logged(
+        client,
+        &AtOperatorSelectionRead,
+        "AtOperatorSelectionRead".to_string(),
+    )
+    .await
     {
-        let _l = LogBE::new("AtOperatorSelectionRead".to_string());
-        let r = client.send(&AtOperatorSelectionRead).await;
-        match r {
-            Ok(n) => log::info!("  OK operator={:?}", n.oper),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
+        Ok(v) => log::info!("  {:?}", v),
+        Err(_) => (),
     }
 }
 

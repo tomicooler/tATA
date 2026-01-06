@@ -7,6 +7,7 @@ use atat::heapless::String;
 
 use crate::at::NoResponse;
 use crate::utils::LogBE;
+use crate::utils::send_command_logged;
 
 // 6.2.19 AT+CHFA Swap the Audio Channels
 #[derive(Clone, Debug, AtatCmd)]
@@ -61,45 +62,34 @@ pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     number: &'static str,
     duration_millis: u64,
 ) {
-    {
-        let _l = LogBE::new("AtSwapAudioChannelsWrite".to_string());
-        let r = client
-            .send(&AtSwapAudioChannelsWrite {
-                n: AudioChannels::Main,
-            })
-            .await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
-    }
+    send_command_logged(
+        client,
+        &AtSwapAudioChannelsWrite {
+            n: AudioChannels::Main,
+        },
+        "AtSwapAudioChannelsWrite".to_string(),
+    )
+    .await
+    .ok();
 
-    {
-        let _l = LogBE::new("AtDialNumber".to_string());
-        let r = client
-            .send(&AtDialNumber {
-                number: String::<16>::try_from(number).unwrap(),
-            })
-            .await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
-    }
+    send_command_logged(
+        client,
+        &AtDialNumber {
+            number: String::<16>::try_from(number).unwrap(),
+        },
+        "AtSwapAudioChannelsAtDialNumberWrite".to_string(),
+    )
+    .await
+    .ok();
 
     {
         let _l = LogBE::new("Sleeping".to_string());
         pico.sleep(duration_millis).await;
     }
 
-    {
-        let _l = LogBE::new("AtHangup".to_string());
-        let r = client.send(&AtHangup).await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
-    }
+    send_command_logged(client, &AtHangup, "AtHangup".to_string())
+        .await
+        .ok();
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use atat::atat_derive::AtatEnum;
 use atat::heapless::String;
 
 use crate::at::NoResponse;
-use crate::utils::LogBE;
+use crate::utils::send_command_logged;
 
 // 4.2.2 AT+CMGF Select SMS Message Format
 // AT+CMGF=[<mode>]
@@ -54,32 +54,26 @@ pub async fn send_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     number: &'static str,  // Bytes<16>  ? (same for Call)
     message: &'static str, // Bytes<160> ?
 ) {
-    {
-        let _l = LogBE::new("AtSelectSMSMessageFormatWrite".to_string());
-        let r = client
-            .send(&AtSelectSMSMessageFormatWrite {
-                mode: MessageMode::Text,
-            })
-            .await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
-    }
+    send_command_logged(
+        client,
+        &AtSelectSMSMessageFormatWrite {
+            mode: MessageMode::Text,
+        },
+        "AtSelectSMSMessageFormatWrite".to_string(),
+    )
+    .await
+    .ok();
 
-    {
-        let _l = LogBE::new("AtSendSMSWrite".to_string());
-        let r = client
-            .send(&AtSendSMSWrite {
-                number: String::<16>::try_from(number).unwrap(),
-                message: String::<160>::try_from(message).unwrap(),
-            })
-            .await;
-        match r {
-            Ok(_) => log::info!("  OK"),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
-    }
+    send_command_logged(
+        client,
+        &AtSendSMSWrite {
+            number: String::<16>::try_from(number).unwrap(),
+            message: String::<160>::try_from(message).unwrap(),
+        },
+        "AtSendSMSWrite".to_string(),
+    )
+    .await
+    .ok();
 }
 
 #[cfg(test)]
