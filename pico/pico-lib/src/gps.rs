@@ -256,7 +256,7 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                 location = Some(location::Location {
                     latitude: resp.latitude,
                     longitude: resp.longitude,
-                    accuracy: utils::estimate_gps_accuracy(resp.hdop, resp.vdop, resp.pdop),
+                    accuracy: utils::estimate_gps_accuracy(resp.pdop),
                     timestamp: 0,
                 });
                 break;
@@ -377,7 +377,7 @@ mod tests {
             location::Location {
                 latitude: 46.7624859,
                 longitude: 18.6304591,
-                accuracy: 500.0,
+                accuracy: 5.75,
                 timestamp: 0,
             },
             loc1.unwrap()

@@ -14,10 +14,10 @@ pub fn get_distance_in_meters(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64
     return earth_radius_in_meters * c;
 }
 
-// todo research, how to do this
-pub fn estimate_gps_accuracy(_pdop: f64, _vdop: f64, _hdop: f64) -> f64 {
-    return 500.0;
-    //return sqrt(pow(pdop / 2.0, 2.0) + pow(vdop / 2.0, 2.0) + pow(hdop / 2.0, 2.0));
+// https://gis.stackexchange.com/questions/111004/translating-hdop-pdop-and-vdop-to-metric-accuracy-from-given-nmea-strings
+pub fn estimate_gps_accuracy(pdop: f64) -> f64 {
+    // Accuracy 2.5m CEP (circular error probable)
+    return 2.5 * pdop;
 }
 
 pub fn as_tokens(input: String, delimiter: &'static str) -> VecDeque<String> {
