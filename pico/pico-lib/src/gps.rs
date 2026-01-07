@@ -8,6 +8,8 @@ use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
+use fasttime::Date;
+use fasttime::DateTime;
 
 use crate::at::NoResponse;
 use crate::location;
@@ -230,7 +232,7 @@ pub enum FixStatus {
 
 pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
-    _pico: &mut U,
+    pico: &mut U,
     max_retries: u8,
 ) -> Option<location::Location> {
     send_command_logged(
@@ -243,6 +245,8 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
     .await
     .ok();
 
+    // TODO defer { AtGnssPowerControlWrite::TurnOff }; would be better
+
     let mut location: Option<location::Location> = None;
     for i in 0..max_retries {
         match send_command_logged(
@@ -253,16 +257,43 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         .await
         {
             Ok(resp) => {
+                if resp.utc_date_time.len() != 18 {
+                    continue;
+                }
+
+                let (year, rest) = resp.utc_date_time.as_str().split_at(4);
+                let (month, rest) = rest.split_at(2);
+                let (day, rest) = rest.split_at(2);
+                let (hour, rest) = rest.split_at(2);
+                let (minute, rest) = rest.split_at(2);
+                let (second, rest) = rest.split_at(2);
+                let (_, millis) = rest.split_at(1);
+
+                let datetime = DateTime {
+                    date: Date {
+                        year: year.parse().unwrap_or_default(),
+                        month: month.parse().unwrap_or_default(),
+                        day: day.parse().unwrap_or_default(),
+                    },
+                    time: fasttime::Time {
+                        hour: hour.parse().unwrap_or_default(),
+                        minute: minute.parse().unwrap_or_default(),
+                        second: second.parse().unwrap_or_default(),
+                        nanosecond: millis.parse::<u32>().unwrap_or_default() * 1_000_000u32,
+                    },
+                };
+
                 location = Some(location::Location {
                     latitude: resp.latitude,
                     longitude: resp.longitude,
                     accuracy: utils::estimate_gps_accuracy(resp.pdop),
-                    timestamp: 0,
+                    timestamp: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
                 });
                 break;
             }
             Err(_) => (),
         }
+        pico.sleep(1000).await;
     }
 
     send_command_logged(
@@ -323,7 +354,7 @@ mod tests {
 
         assert_eq!(
             atat::Error::Parse,
-            cmd.parse(Ok(b"+CGNSINF: 1,1,20221212120221.000,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,f,,,51,,\r\n")).err().unwrap(),
+            cmd.parse(Ok(b"+CGNSINF: 1,1,20221212120221.123,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,f,,,51,,\r\n")).err().unwrap(),
         );
 
         assert_eq!(
@@ -350,7 +381,7 @@ mod tests {
                 hpa: None,
                 vpa: None,
             },
-            cmd.parse(Ok(b"+CGNSINF: 1,1,20221212120221.000,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,6,,,51,,\r\n")).unwrap()
+            cmd.parse(Ok(b"+CGNSINF: 1,1,20221212120221.123,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,6,,,51,,\r\n")).unwrap()
         );
     }
 
@@ -362,7 +393,7 @@ mod tests {
         client.results.push_back(Ok("".as_bytes())); // Turn On
         client.results.push_back(Ok("+CGNSINF: ,,,,".as_bytes())); // error
         client.results.push_back(Ok("+CGNSINF: ,,,,".as_bytes())); // error
-        client.results.push_back(Ok("+CGNSINF: 1,1,20221212120221.000,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,6,,,51,,".as_bytes())); // location
+        client.results.push_back(Ok("+CGNSINF: 1,1,20221212120221.123,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,6,,,51,,".as_bytes())); // location
         client.results.push_back(Ok("".as_bytes())); // Turn off
 
         let mut pico = crate::at::tests::PicoMock::default();
@@ -378,9 +409,12 @@ mod tests {
                 latitude: 46.7624859,
                 longitude: 18.6304591,
                 accuracy: 5.75,
-                timestamp: 0,
+                timestamp: 1670846541123,
             },
             loc1.unwrap()
         );
+        assert_eq!(2, pico.sleep_calls.len());
+        assert_eq!(1000, *pico.sleep_calls.get(0).unwrap());
+        assert_eq!(1000, *pico.sleep_calls.get(1).unwrap());
     }
 }
