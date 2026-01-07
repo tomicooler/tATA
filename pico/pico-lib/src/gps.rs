@@ -361,7 +361,7 @@ mod tests {
             GnssNavigationInformationResponse {
                 gnss_run_status: GNSSRunStatus::On,
                 fix_status: FixStatus::FixedPosition,
-                utc_date_time: serde_at::from_slice(b"20221212120221.000").unwrap(),
+                utc_date_time: serde_at::from_slice(b"20221212120221.123").unwrap(),
                 latitude: 46.7624859,
                 longitude: 18.6304591,
                 msl_altitude: 329.218,
