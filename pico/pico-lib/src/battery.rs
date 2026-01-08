@@ -37,7 +37,6 @@ mod tests {
     cmd_serialization_tests! {
         test_at_battery_charge_execute: (
             AtBatteryChargeExecute,
-            7,
             "AT+CBC\r",
         ),
     }

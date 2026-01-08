@@ -104,19 +104,16 @@ mod tests {
             AtSwapAudioChannelsWrite {
                 n: AudioChannels::Main,
             },
-            10,
             "AT+CHFA=1\r",
         ),
         test_at_dial_number: (
             AtDialNumber {
                 number: String::try_from("+361234567").unwrap(),
             },
-            17,
             "ATD+361234567,i;\r",
         ),
         test_at_hangup: (
             AtHangup,
-            9,
             "AT+CHUP;\r",
         ),
     }

@@ -257,6 +257,7 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         .await
         {
             Ok(resp) => {
+                log::info!("  OK {:?}", resp);
                 if resp.utc_date_time.len() != 18 {
                     continue;
                 }
@@ -325,19 +326,16 @@ mod tests {
             AtGnssPowerControlWrite {
                 mode: PowerMode::TurnOn,
             },
-            13,
             "AT+CGNSPWR=1\r",
         ),
         test_at_gnss_power_control_off: (
             AtGnssPowerControlWrite {
                 mode: PowerMode::TurnOff,
             },
-            13,
             "AT+CGNSPWR=0\r",
         ),
         test_at_gnss_navigation_information_execute: (
             AtGnssNavigationInformationExecute,
-            11,
             "AT+CGNSINF\r",
         ),
     }
@@ -417,4 +415,6 @@ mod tests {
         assert_eq!(1000, *pico.sleep_calls.get(0).unwrap());
         assert_eq!(1000, *pico.sleep_calls.get(1).unwrap());
     }
+
+    // TODO test error handling
 }

@@ -175,32 +175,26 @@ mod tests {
     cmd_serialization_tests! {
         test_at_init: (
             AtInit,
-            3,
             "AT\r",
         ),
         test_set_command_echo_off: (
             AtSetCommandEchoOff,
-            5,
             "ATE0\r",
         ),
         test_network_registration: (
             AtNetworkRegistrationRead,
-            10,
             "AT+CGREG?\r",
         ),
         test_enter_pin: (
             AtEnterPinRead,
-            9,
             "AT+CPIN?\r",
         ),
         test_signal_quality_report_execute: (
             AtSignalQualityReportExecute,
-            7,
             "AT+CSQ\r",
         ),
         test_operator_selection_read: (
             AtOperatorSelectionRead,
-            9,
             "AT+COPS?\r",
         ),
     }

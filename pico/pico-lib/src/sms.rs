@@ -88,7 +88,6 @@ mod tests {
             AtSelectSMSMessageFormatWrite {
                 mode: MessageMode::Text,
             },
-            10,
             "AT+CMGF=1\r",
         ),
         test_at_send_sms_write: (
@@ -96,7 +95,6 @@ mod tests {
                 number: String::try_from("+361234567").unwrap(),
                 message: String::try_from("this is the message content").unwrap(),
             },
-            47,
             "AT+CMGS=+361234567\rthis is the message content\u{1a}",
         ),
     }

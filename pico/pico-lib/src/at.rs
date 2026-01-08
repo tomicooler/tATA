@@ -36,9 +36,9 @@ pub mod tests {
         $(
             #[test]
             fn $name() {
-                let (cmd, len, text) = $value;
+                let (cmd, text) = $value;
                 let mut buffer = crate::at::tests::zeros();
-                assert_eq!(len, cmd.write(&mut buffer));
+                assert_eq!(text.len(), cmd.write(&mut buffer));
                 assert_eq!(
                     String::from_utf8(buffer)
                         .unwrap()

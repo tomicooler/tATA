@@ -6,6 +6,7 @@ pub mod at;
 pub mod battery;
 pub mod call;
 pub mod gps;
+pub mod gsm;
 pub mod location;
 pub mod network;
 pub mod poro;

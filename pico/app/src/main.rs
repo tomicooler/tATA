@@ -229,6 +229,9 @@ async fn urc_handler_task(
                 urc::Urc::SMSReady => {
                     log::info!("URC SMSReady");
                 }
+                urc::Urc::SetBearer(v) => {
+                    log::info!("SetBearer {:?}", v);
+                }
             },
             pubsub::WaitResult::Lagged(b) => {
                 log::info!("Urc Lagged messages: {}", b);
