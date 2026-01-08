@@ -101,15 +101,6 @@ pub struct Watcher {
 
 // Utils
 
-fn as_tokens(input: String) -> VecDeque<String> {
-    let parts = input.split(DELIMITER);
-    let mut tokens = VecDeque::new();
-    for part in parts {
-        tokens.push_back(String::from(part));
-    }
-    return tokens;
-}
-
 // https://stackoverflow.com/questions/50277050/format-convert-a-number-to-a-string-in-any-base-including-bases-other-than-deci
 fn to_str_radix(value: i64, radix: u64) -> String {
     let mut buf = Vec::new();
@@ -386,7 +377,7 @@ impl ProtectorMachine {
     }
 
     pub fn parse(&self, d: String) -> Result<Protector, &'static str> {
-        let mut tokens = as_tokens(d);
+        let mut tokens = utils::as_tokens(d, DELIMITER);
         let mut p = Protector::default();
         p.x_parse(&mut tokens)?;
         Ok(p)
@@ -522,7 +513,7 @@ impl WatcherMachine {
     }
 
     pub fn parse(&self, d: String) -> Result<Watcher, &'static str> {
-        let mut tokens = as_tokens(d);
+        let mut tokens = utils::as_tokens(d, DELIMITER);
         let mut w = Watcher::default();
         w.x_parse(&mut tokens)?;
         Ok(w)

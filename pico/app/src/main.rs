@@ -2,7 +2,7 @@
 #![no_main]
 
 use alloc::string::ToString;
-use atat::asynch::{AtatClient, Client};
+use atat::asynch::Client;
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use embassy_executor::Spawner;
@@ -23,7 +23,7 @@ use {defmt_rtt as _, panic_probe as _};
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::utils::LogBE;
+use pico_lib::utils::send_command_logged;
 use pico_lib::{at, battery, call, network, sms};
 
 extern crate alloc;
@@ -143,13 +143,15 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(100)).await;
     }
 
+    match send_command_logged(
+        &mut client,
+        &battery::AtBatteryChargeExecute,
+        "AtBatteryChargeExecute".to_string(),
+    )
+    .await
     {
-        let _l = LogBE::new("AtBatteryChargeExecute".to_string());
-        let r = client.send(&battery::AtBatteryChargeExecute).await;
-        match r {
-            Ok(b) => log::info!("  OK {:?}", b),
-            Err(e) => log::info!("  ERROR: {:?}", e),
-        }
+        Ok(v) => log::info!("  {:?}", v),
+        Err(_) => (),
     }
 
     call::call_number(
@@ -226,6 +228,9 @@ async fn urc_handler_task(
                 }
                 urc::Urc::SMSReady => {
                     log::info!("URC SMSReady");
+                }
+                urc::Urc::SetBearer(v) => {
+                    log::info!("SetBearer {:?}", v);
                 }
             },
             pubsub::WaitResult::Lagged(b) => {
