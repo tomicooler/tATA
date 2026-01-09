@@ -24,7 +24,7 @@ use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
 use pico_lib::utils::send_command_logged;
-use pico_lib::{at, battery, call, network, sms};
+use pico_lib::{at, battery, call, gps, gsm, network, sms};
 
 extern crate alloc;
 
@@ -152,6 +152,16 @@ async fn main(spawner: Spawner) {
     {
         Ok(v) => log::info!("  {:?}", v),
         Err(_) => (),
+    }
+
+    match gps::get_gps_location(&mut client, &mut pico, 30).await {
+        Some(v) => log::info!("GPS location: {:?}", v),
+        None => (),
+    }
+
+    match gsm::get_gsm_location(&mut client, &mut pico, 30, "online").await {
+        Some(v) => log::info!("GSM location: {:?}", v),
+        None => (),
     }
 
     call::call_number(
