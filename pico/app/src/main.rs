@@ -5,13 +5,13 @@ use alloc::string::ToString;
 use atat::asynch::Client;
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_rp::adc::{Adc, Channel, Config, InterruptHandler as AdcInterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output, Pull};
-use embassy_rp::peripherals::{UART0, USB};
+use embassy_rp::peripherals::UART0;
 use embassy_rp::uart::{self, BufferedInterruptHandler, BufferedUart, BufferedUartRx};
-use embassy_rp::usb::{Driver, InterruptHandler as UsbInterruptHandler};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub;
 use embassy_sync::pubsub::Subscriber;
@@ -37,26 +37,28 @@ const URC_SUBSCRIBERS: usize = 3;
 
 bind_interrupts!(struct Irqs {
     UART0_IRQ => BufferedInterruptHandler<UART0>;
-    USBCTRL_IRQ => UsbInterruptHandler<USB>;
     ADC_IRQ_FIFO => AdcInterruptHandler;
 });
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    info!("STARTING");
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 1280;
+        const HEAP_SIZE: usize = 4096;
         static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
-
     let p = embassy_rp::init(Default::default());
-    let driver = Driver::new(p.USB, Irqs);
-    spawner.spawn(logger_task(driver)).unwrap();
+    Timer::after(Duration::from_secs(2)).await;
+    info!("STARTED");
 
-    Timer::after(Duration::from_millis(500)).await;
-    log::info!("USB Logger Task spawned");
+    let mut pico = Pico {
+        led: Output::new(p.PIN_25, Level::Low),
+        power: Output::new(p.PIN_14, Level::Low),
+    };
 
+    // This is just a Test will be removed later.
     let pm = poro::ProtectorMachine {};
     let dumped = pm.dump(&poro::Protector {
         car_location: Some(poro::CarLocation {
@@ -78,7 +80,7 @@ async fn main(spawner: Spawner) {
         status: Some(poro::Status::CarTheftDetected),
         service: Some(poro::Service { value: true }),
     });
-    log::info!("dumped {}", dumped);
+    info!("PORO TEST: {}", dumped.as_str());
 
     let mut adc = Adc::new(p.ADC, Irqs, Config::default());
     let mut p26 = Channel::new_pin(p.PIN_26, Pull::None);
@@ -87,15 +89,15 @@ async fn main(spawner: Spawner) {
     let (tx_pin, rx_pin, uart) = (p.PIN_0, p.PIN_1, p.UART0);
 
     static INGRESS_BUF: StaticCell<[u8; INGRESS_BUF_SIZE]> = StaticCell::new();
-    static TX_BUF: StaticCell<[u8; 16]> = StaticCell::new();
-    static RX_BUF: StaticCell<[u8; 16]> = StaticCell::new();
+    static TX_BUF: StaticCell<[u8; 256]> = StaticCell::new();
+    static RX_BUF: StaticCell<[u8; 256]> = StaticCell::new();
     let uart = BufferedUart::new(
         uart,
         tx_pin,
         rx_pin,
         Irqs,
-        TX_BUF.init([0; 16]),
-        RX_BUF.init([0; 16]),
+        TX_BUF.init([0; 256]),
+        RX_BUF.init([0; 256]),
         uart::Config::default(),
     );
     let (writer, reader) = uart.split();
@@ -117,24 +119,25 @@ async fn main(spawner: Spawner) {
     );
 
     Timer::after(Duration::from_millis(500)).await;
-    log::info!("Before spawning reader Task");
+    info!("Before spawning reader Task");
 
     spawner.spawn(ingress_task(ingress, reader)).unwrap();
 
     Timer::after(Duration::from_millis(500)).await;
-    log::info!("After spawning reader Task");
+    info!("After spawning reader Task");
 
     let sub = URC_CHANNEL.subscribe().unwrap();
     spawner.spawn(urc_handler_task(sub)).unwrap();
-    log::info!("After spawning Urc Task");
+    info!("After spawning Urc Task");
     Timer::after(Duration::from_secs(2)).await;
 
-    let mut pico = Pico {
-        led: Output::new(p.PIN_25, Level::Low),
-        power: Output::new(p.PIN_14, Level::Low),
-    };
+    pico.restart_module().await;
+    info!("Network init");
+    Timer::after(Duration::from_secs(2)).await;
 
     network::init_network(&mut client, &mut pico).await;
+    sms::init(&mut client, &mut pico).await;
+    call::init(&mut client, &mut pico).await;
 
     for _ in 0..30 {
         pico.set_led_high();
@@ -150,37 +153,41 @@ async fn main(spawner: Spawner) {
     )
     .await
     {
-        Ok(v) => log::info!("  {:?}", v),
+        Ok(v) => info!("  {:?}", v),
         Err(_) => (),
     }
 
-    match gps::get_gps_location(&mut client, &mut pico, 30).await {
-        Some(v) => log::info!("GPS location: {:?}", v),
+    match gps::get_gps_location(&mut client, &mut pico, 10).await {
+        Some(v) => info!("GPS location: {:?}", v),
         None => (),
     }
 
-    match gsm::get_gsm_location(&mut client, &mut pico, 30, "online").await {
-        Some(v) => log::info!("GSM location: {:?}", v),
+    match gsm::get_gsm_location(&mut client, &mut pico, 10, "online").await {
+        Some(v) => info!("GSM location: {:?}", v),
         None => (),
     }
+
+    const PHONE_NUMBER: &'static str = "+36301234567";
 
     call::call_number(
         &mut client,
         &mut pico,
-        "+36301234567",
-        Duration::from_secs(6).as_millis(),
+        PHONE_NUMBER,
+        Duration::from_secs(10).as_millis(),
     )
     .await;
 
     sms::send_sms(
         &mut client,
         &mut pico,
-        "+36301234567",
+        PHONE_NUMBER,
         "this is a text message",
     )
     .await;
 
-    let mut counter = 0u8;
+    sms::receive_sms(&mut client, &mut pico).await;
+
+    let mut counter = 0u64;
     loop {
         pico.set_led_high();
         Timer::after(Duration::from_millis(500)).await;
@@ -189,11 +196,9 @@ async fn main(spawner: Spawner) {
 
         let level = adc.read(&mut p26).await.unwrap();
         let temp = convert_to_celsius(adc.read(&mut ts).await.unwrap());
-        log::info!(
+        info!(
             "Tick counter: {} Pin 26 ADC: {} Temp: {}",
-            counter,
-            level,
-            temp
+            counter, level, temp
         );
 
         pico.set_led_low();
@@ -213,7 +218,7 @@ async fn ingress_task(
     >,
     mut reader: BufferedUartRx,
 ) -> ! {
-    log::info!("ingress task spawned...");
+    info!("INGRESS TASK SPAWNED");
     ingress.read_from(&mut reader).await
 }
 
@@ -228,31 +233,68 @@ async fn urc_handler_task(
         1,
     >,
 ) -> ! {
-    log::info!("Ucr Handler task spawned...");
+    info!("URC TASK SPAWNED");
     loop {
         let m = sub.next_message().await;
         match m {
             pubsub::WaitResult::Message(u) => match u {
                 urc::Urc::CallReady => {
-                    log::info!("URC CallReady");
+                    info!("URC CallReady");
                 }
                 urc::Urc::SMSReady => {
-                    log::info!("URC SMSReady");
+                    info!("URC SMSReady");
                 }
-                urc::Urc::SetBearer(v) => {
-                    log::info!("SetBearer {:?}", v);
+                urc::Urc::SetBearer(_v) => {
+                    info!("URC SetBearer");
+                }
+                urc::Urc::GprsDisconnected(_v) => {
+                    info!("URC GprsDisconnected");
+                }
+                urc::Urc::Ring => {
+                    info!("URC Ring");
+                }
+                urc::Urc::NormalPowerDown => {
+                    info!("URC NormalPowerDown");
+                }
+                urc::Urc::UnderVoltagePowerDown => {
+                    info!("URC UnderVoltagePowerDown");
+                }
+                urc::Urc::UnderVoltageWarning => {
+                    info!("URC UnderVoltageWarning");
+                }
+                urc::Urc::OverVoltagePowerDown => {
+                    info!("URC OverVoltagePowerDown");
+                }
+                urc::Urc::OverVoltageWarning => {
+                    info!("URC OverVoltageWarning");
+                }
+                urc::Urc::ChargeOnlyMode => {
+                    info!("URC ChargeOnlyMode");
+                }
+                urc::Urc::Ready => {
+                    info!("URC Ready");
+                }
+                urc::Urc::ConnectOK1 => {
+                    info!("URC ConnectOK1");
+                }
+                urc::Urc::ConnectOK => {
+                    info!("URC ConnectOK");
+                }
+                urc::Urc::ClipUrc(v) => {
+                    info!("URC ClipUrc number={}, type={}", v.number, v.type_);
+                }
+                urc::Urc::NewMessageIndicationUrc(v) => {
+                    info!(
+                        "URC NewMessageIndicationUrc index={} mem={}",
+                        v.index, v.mem
+                    );
                 }
             },
             pubsub::WaitResult::Lagged(b) => {
-                log::info!("Urc Lagged messages: {}", b);
+                info!("Urc Lagged messages: {}", b);
             }
         }
     }
-}
-
-#[embassy_executor::task]
-async fn logger_task(driver: Driver<'static, USB>) {
-    embassy_usb_logger::run!(1024, log::LevelFilter::Trace, driver);
 }
 
 fn convert_to_celsius(raw_temp: u16) -> f32 {
@@ -281,13 +323,36 @@ impl at::PicoHW for Pico<'_> {
         self.led.set_low();
     }
 
-    async fn power_on_off(&mut self) {
+    async fn restart_module(&mut self) {
+        info!("Sim868 restart procedure");
+
         self.led.set_high();
-        log::info!("power on");
+        info!("Sim868 power off");
         self.power.set_high();
+        // Customer can power off GSM by pulling down the PWRKEY pin for at least 1.5 second and release.
         Timer::after_secs(2).await;
         self.power.set_low();
-        log::info!("power off");
         self.led.set_low();
+
+        Timer::after_secs(1).await;
+        self.led.set_high();
+        info!("Sim868 power on");
+        self.power.set_high();
+        // Customer can power on GSM by pulling down the PWRKEY pin for at least 1 second and then release.
+        Timer::after_secs(1).await;
+        self.power.set_low();
+        self.led.set_low();
+
+        Timer::after_secs(2).await;
+        info!("Sim868 should be Ready");
+
+        // Power off GSM by AT command “AT+CPOWD=1”.
+
+        // The GSM will restart after pulling the PWRKEY over 33 seconds.
+
+        // Customer can use AT command “AT+IPR=x” to set a fixed baud rate and save the configuration to
+        // non-volatile flash memory. After the configuration is saved as fixed baud rate, the Code “RDY” should be
+        // received from the serial port every time when SIM868 is powered on. For details, please refer to the chapter
+        // “AT+IPR” in document [1]
     }
 }

@@ -47,18 +47,30 @@ Building the uf2 file:
 
 ```shell
 cd pico/app
+
+# default run is with probe-rs, uf2 can also be generated, see .cargo/config.yaml
 cargo run
+
+# attach to the app
+probe-rs attach --chip RP2040 ../target/thumbv6m-none-eabi/debug/tATA-pico
 ```
 
 Running the tests, etc:
 
 ```shell
 cd pico/pico-lib
+
+# run the tests
 cargo test
+
+# analyze
 cargo check
+
+# format
 cargo fmt
-# run a specific test with env logger
-RUST_LOG=debug cargo test test_call_number -- --nocapture
+
+# fun a specific test case
+RUST_BACKTRACE=1 cargo test test_call_number -- --nocapture
 ```
 
 Reading the logs:

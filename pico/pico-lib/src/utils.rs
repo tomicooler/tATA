@@ -1,3 +1,5 @@
+use defmt::info;
+
 use alloc::collections::vec_deque::VecDeque;
 use alloc::string::String;
 use libm::{asin, cos, pow, sin, sqrt};
@@ -29,20 +31,30 @@ pub fn as_tokens(input: String, delimiter: &'static str) -> VecDeque<String> {
     return tokens;
 }
 
+pub fn bytes_to_string<const N: usize>(
+    bytes: &atat::heapless_bytes::Bytes<N>,
+) -> atat::heapless::String<N> {
+    let mut data = atat::heapless::Vec::<u8, N>::new();
+    for c in bytes.into_iter() {
+        let _ = data.push(*c);
+    }
+    return atat::heapless::String::<N>::from_utf8(data).unwrap();
+}
+
 pub struct LogBE {
     context: String,
 }
 
 impl LogBE {
     pub fn new(context: String) -> Self {
-        log::info!("BEGIN {}", context);
+        info!("BEGIN {}", context.as_str());
         LogBE { context: context }
     }
 }
 
 impl Drop for LogBE {
     fn drop(&mut self) {
-        log::info!("END {}", self.context);
+        info!("END {}", self.context.as_str());
     }
 }
 
@@ -54,8 +66,8 @@ pub async fn send_command_logged<T: atat::asynch::AtatClient, U: atat::AtatCmd>(
     let _l = LogBE::new(context);
     let r = client.send(command).await;
     match r.as_ref() {
-        Ok(_) => log::info!("  OK"), // TODO: {:?}, v ?
-        Err(e) => log::info!("  ERROR: {:?}", e),
+        Ok(_) => info!("  OK"), // TODO: {:?}, v ?
+        Err(e) => info!("  ERROR: {:?}", e),
     }
     return r;
 }

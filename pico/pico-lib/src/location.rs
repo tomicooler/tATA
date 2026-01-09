@@ -1,6 +1,7 @@
 use crate::{gps::get_gps_location, gsm::get_gsm_location};
+use defmt::Format;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Format, PartialEq)]
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
