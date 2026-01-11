@@ -3,6 +3,7 @@ use atat::atat_derive::AtatUrc;
 use atat::heapless_bytes::Bytes;
 
 use crate::call::ClipUrc;
+use crate::network::EnterPinReadResponse;
 use crate::sms::NewMessageIndicationUrc;
 
 // 18.1 CME ERROR
@@ -21,6 +22,8 @@ pub struct DeactResponse {
 // All URCs must be defined (https://github.com/FactbirdHQ/atat/issues/149#issuecomment-1538193692)
 #[derive(Clone, AtatUrc)]
 pub enum Urc {
+    #[at_urc("+CPIN")]
+    EnterPinReadResponse(EnterPinReadResponse),
     #[at_urc("RING")]
     Ring,
     #[at_urc("NORMAL POWER DOWN")]

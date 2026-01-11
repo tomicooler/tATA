@@ -85,10 +85,18 @@ pub struct AtOperatorSelectionRead;
 #[derive(Debug, Format, Clone, AtatResp, PartialEq)]
 pub struct OperatorSelectionReadResponse {
     #[at_arg(position = 0)]
-    pub mode: u8, // 0 Automatic, 1 Manual
+    pub mode: OperatorMode,
     #[at_arg(position = 1)]
     pub format: Option<u8>,
+    #[at_arg(position = 2)]
     pub oper: Option<String<64>>,
+}
+
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
+pub enum OperatorMode {
+    #[default]
+    Automatic = 0,
+    Manual = 1,
 }
 
 #[cfg(test)]
@@ -295,7 +303,7 @@ mod tests {
         let cmd = AtOperatorSelectionRead;
         assert_eq!(
             OperatorSelectionReadResponse {
-                mode: 0,
+                mode: OperatorMode::Automatic,
                 format: Some(0),
                 oper: Some(String::try_from("PANNON GSM").unwrap())
             },
