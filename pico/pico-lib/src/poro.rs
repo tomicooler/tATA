@@ -1,3 +1,5 @@
+use defmt::Format;
+
 use alloc::collections::vec_deque::VecDeque;
 use alloc::format;
 use alloc::vec::Vec;
@@ -15,20 +17,20 @@ use fasttime::DateTime;
 #[cfg(test)]
 extern crate std;
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Service {
     pub value: bool,
 }
 
 // Protector
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Position {
     pub latitude: f64,
     pub longitude: f64,
 }
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct CarLocation {
     pub position: Position,
     pub accuracy: f32,
@@ -36,13 +38,13 @@ pub struct CarLocation {
     pub timestamp: i64,
 }
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct ParkLocation {
     pub position: Position,
     pub accuracy: f32,
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Format, Default, PartialEq)]
 pub enum Status {
     #[default]
     ParkingDetected,
@@ -50,7 +52,7 @@ pub enum Status {
     CarTheftDetected,
 }
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Protector {
     pub car_location: Option<CarLocation>,
     pub park_location: Option<ParkLocation>,
@@ -60,22 +62,22 @@ pub struct Protector {
 
 // Watcher
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Call {
     pub value: bool,
 }
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Refresh {
     pub value: bool,
 }
 
-#[derive(Debug, PartialEq, Default, MachineParser, MachineDumper)]
+#[derive(Debug, Format, PartialEq, Default, MachineParser, MachineDumper)]
 pub struct Park {
     pub value: bool,
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Format, Default, PartialEq)]
 pub enum Source {
     #[default]
     Gcm,

@@ -1,3 +1,5 @@
+use defmt::Format;
+
 use alloc::format;
 use alloc::string::ToString;
 use atat::atat_derive::AtatCmd;
@@ -5,22 +7,24 @@ use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 use atat::heapless_bytes::Bytes;
+use defmt::info;
 use fasttime::Date;
 use fasttime::DateTime;
 
 use crate::at::NoResponse;
 use crate::location;
+use crate::utils::bytes_to_string;
 use crate::utils::send_command_logged;
 
 // 7.2.1 AT+CGATT Attach or Detach from GPRS Service
 // AT+CGATT=[<state>]
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CGATT", NoResponse, timeout_ms = 7500)]
 pub struct AtAttachGPRS {
     pub state: AttachState,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum)]
 pub enum AttachState {
     Detach = 0,
     Attach = 1,
@@ -28,7 +32,7 @@ pub enum AttachState {
 
 // 8.2.9 AT+CSTT Start Task and Set APN, USER NAME, PASSWORD
 // AT+CSTT=<apn>[,<user name>[,<password>]]
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CSTT", NoResponse)]
 pub struct AtSetApnWrite {
     pub apn: String<50>,
@@ -38,17 +42,18 @@ pub struct AtSetApnWrite {
 
 // 8.2.10 AT+CIICR Bring up Wireless Connection with GPRS or CSD
 // AT+CIICR
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CIICR", NoResponse, timeout_ms = 85000)]
 pub struct AtBringUpWirelessConnectionExecute;
 
 // 8.2.11 AT+CIFSR Get Local IP Address
 // AT+CIFSR
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CIFSR", GetLocalIPAddressResponse)]
 pub struct AtGetLocalIPAddressExecute;
 
-#[derive(Debug, Clone, AtatResp, PartialEq, Default)]
+// TODO: parsing issue
+#[derive(Debug, Format, Clone, AtatResp, PartialEq, Default)]
 pub struct GetLocalIPAddressResponse {
     pub address: String<50>,
 }
@@ -60,7 +65,7 @@ pub struct GetLocalIPAddressResponse {
 // if <cmd_type> == 4 (GetBearerParameters)
 //   +SAPBR: <ConParamTag>,<ConParamValue>
 // Only type 1 (OpenBearer), type 0 (CloseBearer) and type 3 (SetBearerParameter) is used, so ok with NoResponse
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+SAPBR", NoResponse, timeout_ms = 85000)] // 85 sec for 1 (OpenBearer), 65 sec for 0 (CloseBearer)
 #[rustfmt::skip]
 pub struct AtSetBearerWrite {
@@ -70,7 +75,7 @@ pub struct AtSetBearerWrite {
     pub con_param_value: Option<String<64>>, // CSD/GPRS  len(64)  len(32)  len(32)  for CSD    for CSD (2400, 4800, 9600, 14400)
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum)]
 pub enum CmdType {
     CloseBearer = 0,
     OpenBearer = 1,
@@ -84,7 +89,7 @@ pub enum CmdType {
 // 2.2 AT+CLBSCFG Base station Location Configuration
 // AT+CLBSCFG=<operate>,<para>[,<value>]
 // NoResponse for Operate 1 (Set)
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CLBSCFG", NoResponse)]
 pub struct AtBaseStationLocationConfWrite {
     pub operate: Operate,
@@ -92,13 +97,13 @@ pub struct AtBaseStationLocationConfWrite {
     pub value: Option<String<50>>,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum)]
 pub enum Operate {
     Read = 0,
     Set = 1,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum, Default)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
 pub enum Para {
     #[default]
     CustomerID = 0,
@@ -108,7 +113,7 @@ pub enum Para {
 
 // 2.1 AT+CLBS Base station Location
 // AT+CLBS=<type>,<cid>,[[<longitude>,<latitude>],[<lon_type>]]
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CLBS", BaseStationLocationResponseType4)] // NOTE: only type 4 response is implemented
 pub struct AtBaseStationLocationWrite {
     pub type_: LocationType,
@@ -118,7 +123,7 @@ pub struct AtBaseStationLocationWrite {
     pub lon_type: Option<LonType>,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum, Default)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
 pub enum LocationType {
     #[default]
     Use3Cell = 1,
@@ -145,7 +150,7 @@ pub struct BaseStationLocationResponseType4 {
     pub time: Bytes<8>,           // HH:MM:SS
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum, Default)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
 pub enum LocationCode {
     #[default]
     Success = 0,
@@ -161,7 +166,7 @@ pub enum LocationCode {
     ReportLbsToServerFAiled = 82,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum, Default)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
 pub enum LonType {
     #[default]
     WGS84 = 0,
@@ -237,7 +242,7 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
     )
     .await
     {
-        Ok(v) => log::info!("   OK {:?}", v),
+        Ok(v) => info!("   OK {:?}", v),
         Err(_) => {
             detach(client).await;
             return loc;
@@ -249,10 +254,10 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         &AtSetBearerWrite {
             cmd_type: CmdType::SetBearerParameters,
             cid: 1,
-            con_param_tag: Some(String::<50>::try_from("APN").unwrap()),
-            con_param_value: Some(String::<64>::try_from(apn).unwrap()),
+            con_param_tag: Some(String::<50>::try_from("Contype").unwrap()),
+            con_param_value: Some(String::<64>::try_from("GPRS").unwrap()),
         },
-        "AtSetBearerWrite APN".to_string(),
+        "AtSetBearerWrite GPRS".to_string(),
     )
     .await
     .is_err()
@@ -266,10 +271,10 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         &AtSetBearerWrite {
             cmd_type: CmdType::SetBearerParameters,
             cid: 1,
-            con_param_tag: Some(String::<50>::try_from("Contype").unwrap()),
-            con_param_value: Some(String::<64>::try_from("GPRS").unwrap()),
+            con_param_tag: Some(String::<50>::try_from("APN").unwrap()),
+            con_param_value: Some(String::<64>::try_from(apn).unwrap()),
         },
-        "AtSetBearerWrite GPRS".to_string(),
+        "AtSetBearerWrite APN".to_string(),
     )
     .await
     .is_err()
@@ -328,6 +333,7 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
     }
 
     for i in 0..max_retries {
+        pico.sleep(1000).await;
         match send_command_logged(
             client,
             &AtBaseStationLocationWrite {
@@ -342,17 +348,11 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         .await
         {
             Ok(resp) => {
-                log::info!("  OK {:?}", resp);
                 if resp.location_code != LocationCode::Success {
                     continue;
                 }
 
-                // TODO heapless_bytes::Bytes<8> -> heapless::String<8> conversion, how?
-                let mut date_vec = atat::heapless::Vec::<u8, 8>::new();
-                for v in resp.date.into_iter() {
-                    let _ = date_vec.push(v);
-                }
-                let date = String::<8>::from_utf8(date_vec).unwrap();
+                let date = bytes_to_string(&resp.date);
                 let (day, rest) = date.as_str().split_at(2);
                 let (_, rest) = rest.split_at(1);
                 let (month, rest) = rest.split_at(2);
@@ -360,12 +360,7 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                 let (yy, _) = rest.split_at(2);
                 let year = format!("20{}", yy);
 
-                // TODO heapless_bytes::Bytes<8> -> heapless::String<8> conversion, how?
-                let mut time_vec = atat::heapless::Vec::<u8, 8>::new();
-                for v in resp.time.into_iter() {
-                    let _ = time_vec.push(v);
-                }
-                let time = String::<8>::from_utf8(time_vec).unwrap();
+                let time = bytes_to_string(&resp.time);
                 let (hour, rest) = time.as_str().split_at(2);
                 let (_, rest) = rest.split_at(1);
                 let (minute, rest) = rest.split_at(2);
@@ -396,7 +391,6 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
             }
             Err(_) => (),
         }
-        pico.sleep(1000).await;
     }
 
     deactivate(client).await;
@@ -409,7 +403,7 @@ extern crate std;
 
 #[cfg(test)]
 mod tests {
-    use crate::{at, cmd_serialization_tests};
+    use crate::cmd_serialization_tests;
 
     use super::*;
     use atat::AtatCmd;
@@ -502,7 +496,6 @@ mod tests {
 
     #[test]
     fn test_at_get_local_ip_address_response() {
-        at::tests::init_env_logger();
         let cmd = AtGetLocalIPAddressExecute;
 
         assert_eq!(
@@ -515,7 +508,6 @@ mod tests {
 
     #[test]
     fn test_at_a() {
-        at::tests::init_env_logger();
         let cmd = AtBaseStationLocationWrite {
             type_: LocationType::GetLongLatDateTime,
             cid: 1,
@@ -544,8 +536,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_gsm_location() {
-        at::tests::init_env_logger();
-
         let mut client = crate::at::tests::ClientMock::default();
         client.results.push_back(Ok("".as_bytes())); // GPRS On
         client.results.push_back(Ok("".as_bytes())); // Set APN
@@ -571,11 +561,11 @@ mod tests {
         assert_eq!("AT+CIICR\r", client.sent_commands.get(2).unwrap());
         assert_eq!("AT+CIFSR\r", client.sent_commands.get(3).unwrap());
         assert_eq!(
-            "AT+SAPBR=3,1,\"APN\",\"online\"\r",
+            "AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r",
             client.sent_commands.get(4).unwrap()
         );
         assert_eq!(
-            "AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r",
+            "AT+SAPBR=3,1,\"APN\",\"online\"\r",
             client.sent_commands.get(5).unwrap()
         );
         assert_eq!("AT+SAPBR=1,1\r", client.sent_commands.get(6).unwrap());
@@ -597,9 +587,10 @@ mod tests {
             },
             loc1.unwrap()
         );
-        assert_eq!(2, pico.sleep_calls.len());
+        assert_eq!(3, pico.sleep_calls.len());
         assert_eq!(1000, *pico.sleep_calls.get(0).unwrap());
         assert_eq!(1000, *pico.sleep_calls.get(1).unwrap());
+        assert_eq!(1000, *pico.sleep_calls.get(2).unwrap());
     }
 
     // TODO test error handling

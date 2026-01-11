@@ -1,15 +1,16 @@
 use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
+use defmt::Format;
 
 // 3.2.52 AT+CBC Battery Charge
 // AT+CBC
-#[derive(Clone, Debug, AtatCmd)]
+#[derive(Clone, Debug, Format, AtatCmd)]
 #[at_cmd("+CBC", BatteryChargeResponse)]
 pub struct AtBatteryChargeExecute;
 
 // +CBC: <bcs>,<bcl>,<voltage>
-#[derive(Debug, Clone, AtatResp, PartialEq)]
+#[derive(Debug, Format, Clone, AtatResp, PartialEq)]
 pub struct BatteryChargeResponse {
     #[at_arg(position = 0)]
     pub bcs: BatteryStatus,
@@ -19,7 +20,7 @@ pub struct BatteryChargeResponse {
     pub voltage: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, AtatEnum)]
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum)]
 pub enum BatteryStatus {
     NotCharging = 0,
     Charging = 1,
@@ -32,7 +33,6 @@ mod tests {
 
     use super::*;
     use atat::AtatCmd;
-    use atat::heapless::String;
 
     cmd_serialization_tests! {
         test_at_battery_charge_execute: (

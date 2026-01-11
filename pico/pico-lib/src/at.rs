@@ -1,13 +1,14 @@
 use atat::atat_derive::AtatResp;
+use defmt::Format;
 
-#[derive(Debug, Clone, AtatResp)]
+#[derive(Debug, Format, Clone, AtatResp)]
 pub struct NoResponse;
 
 pub trait PicoHW {
     fn sleep(&mut self, millis: u64) -> impl core::future::Future<Output = ()> + Send;
     fn set_led_high(&mut self);
     fn set_led_low(&mut self);
-    fn power_on_off(&mut self) -> impl core::future::Future<Output = ()> + Send;
+    fn restart_module(&mut self) -> impl core::future::Future<Output = ()> + Send;
 }
 
 #[cfg(test)]
@@ -17,7 +18,6 @@ extern crate std;
 pub mod tests {
     use alloc::string::String as AString;
     use alloc::{collections::vec_deque::VecDeque, vec::Vec as AVec};
-    use atat::heapless::String;
     use atat::{AtatCmd, heapless::Vec};
 
     use crate::at::PicoHW;
@@ -40,7 +40,7 @@ pub mod tests {
                 let mut buffer = crate::at::tests::zeros();
                 assert_eq!(text.len(), cmd.write(&mut buffer));
                 assert_eq!(
-                    String::from_utf8(buffer)
+                    atat::heapless::String::from_utf8(buffer)
                         .unwrap()
                         .trim_matches(char::from(0)),
                     text
@@ -48,10 +48,6 @@ pub mod tests {
             }
         )*
         }
-    }
-
-    pub fn init_env_logger() {
-        let _ = env_logger::builder().is_test(true).try_init();
     }
 
     #[derive(Default)]
@@ -64,7 +60,7 @@ pub mod tests {
         async fn send<Cmd: AtatCmd>(&mut self, cmd: &Cmd) -> Result<Cmd::Response, atat::Error> {
             let mut buffer = crate::at::tests::zeros();
             cmd.write(&mut buffer);
-            let tmp = String::from_utf8(buffer).unwrap();
+            let tmp = atat::heapless::String::from_utf8(buffer).unwrap();
             let trimmed = tmp.trim_matches(char::from(0));
             self.sent_commands.push_back(AString::from(trimmed));
             cmd.parse(self.results.pop_front().expect("missing result"))
@@ -76,7 +72,7 @@ pub mod tests {
         pub sleep_calls: AVec<u64>,
         pub set_led_high_calls: u32,
         pub set_led_low_calls: u32,
-        pub set_power_on_off_calls: u32,
+        pub restart_module_calls: u32,
     }
 
     impl PicoHW for PicoMock {
@@ -92,8 +88,8 @@ pub mod tests {
             self.set_led_low_calls += 1;
         }
 
-        async fn power_on_off(&mut self) {
-            self.set_power_on_off_calls += 1;
+        async fn restart_module(&mut self) {
+            self.restart_module_calls += 1;
         }
     }
 }
