@@ -3,6 +3,7 @@
 
 use alloc::string::ToString;
 use atat::asynch::Client;
+use atat::heapless::String;
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use defmt::*;
@@ -23,7 +24,7 @@ use {defmt_rtt as _, panic_probe as _};
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::utils::send_command_logged;
+use pico_lib::utils::{astring_to_string, send_command_logged};
 use pico_lib::{at, battery, call, gps, gsm, network, sms};
 
 extern crate alloc;
@@ -131,7 +132,6 @@ async fn main(spawner: Spawner) {
     info!("After spawning Urc Task");
     Timer::after(Duration::from_secs(2)).await;
 
-    pico.restart_module().await;
     info!("Network init");
     Timer::after(Duration::from_secs(2)).await;
 
@@ -167,21 +167,24 @@ async fn main(spawner: Spawner) {
         None => (),
     }
 
-    const PHONE_NUMBER: &'static str = "+36301234567";
+    let phone_number: String<30> = String::try_from("+36301234567").unwrap();
 
     call::call_number(
         &mut client,
         &mut pico,
-        PHONE_NUMBER,
+        &phone_number,
         Duration::from_secs(10).as_millis(),
     )
     .await;
 
+    let mut tata_response: String<160> = String::try_from("$tATA/").unwrap();
+    let _ = tata_response.push_str(dumped.as_str());
+
     sms::send_sms(
         &mut client,
         &mut pico,
-        PHONE_NUMBER,
-        "this is a text message",
+        &phone_number,
+        &astring_to_string(tata_response.as_str()),
     )
     .await;
 

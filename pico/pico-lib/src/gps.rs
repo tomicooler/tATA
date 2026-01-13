@@ -2,10 +2,6 @@ use atat::serde_at;
 use defmt::Format;
 use defmt::debug;
 
-use core::num::ParseFloatError;
-use core::num::ParseIntError;
-use core::str::Utf8Error;
-
 use alloc::format;
 use alloc::string::ToString;
 use atat::atat_derive::AtatCmd;
@@ -18,6 +14,7 @@ use fasttime::DateTime;
 use crate::at::NoResponse;
 use crate::location;
 use crate::utils;
+use crate::utils::AtatError;
 use crate::utils::as_tokens;
 use crate::utils::bytes_to_string;
 use crate::utils::send_command_logged;
@@ -91,47 +88,6 @@ pub struct GnssNavigationInformationResponse {  // Length         Format
     #[at_arg(position = 20)]
     pub vpa: Option<f64>,                               // 6              [0,9999.9] meters  (Vertical Positional Accuracy)   reversed
 } // 94
-
-extern crate atat;
-
-#[allow(dead_code)] // field `0` is never read, TODO: research
-pub struct AtatError(atat::Error);
-
-impl From<ParseFloatError> for AtatError {
-    fn from(_: ParseFloatError) -> Self {
-        AtatError(atat::Error::Parse)
-    }
-}
-
-impl From<ParseIntError> for AtatError {
-    fn from(_: ParseIntError) -> Self {
-        AtatError(atat::Error::Parse)
-    }
-}
-
-impl From<()> for AtatError {
-    fn from(_: ()) -> Self {
-        AtatError(atat::Error::Parse)
-    }
-}
-
-impl From<Utf8Error> for AtatError {
-    fn from(_: Utf8Error) -> Self {
-        AtatError(atat::Error::Parse)
-    }
-}
-
-impl From<atat::Error> for AtatError {
-    fn from(value: atat::Error) -> Self {
-        AtatError(value)
-    }
-}
-
-impl From<atat::serde_at::de::Error> for AtatError {
-    fn from(_: atat::serde_at::de::Error) -> Self {
-        AtatError(atat::Error::Parse)
-    }
-}
 
 fn parse_gnss_navigation_information(
     response: &[u8],
