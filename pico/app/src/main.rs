@@ -289,6 +289,9 @@ async fn urc_handler_task(
                         v.index, v.mem
                     );
                 }
+                urc::Urc::EnterPinReadResponse(v) => {
+                    info!("URC EnterPinReadResponse code={}", v.code);
+                }
             },
             pubsub::WaitResult::Lagged(b) => {
                 info!("Urc Lagged messages: {}", b);
