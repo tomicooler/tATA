@@ -32,7 +32,7 @@ pub enum AudioChannels {
 // ATD+36301234567,i;   <- call this number and i: Deactivates CLIR (Enable presentation of own number to called party)
 #[derive(Clone, Debug)]
 pub struct AtDialNumber {
-    pub number: String<16>,
+    pub number: String<30>,
 }
 
 impl<'a> AtatCmd for AtDialNumber {
@@ -104,6 +104,9 @@ pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     _pico: &mut U,
 ) {
+    // Note, this is NO_SAVE, and by default is enabled on my device.
+    // It takes a bit of time, but having an extra Read command messes
+    // up the URC handling.
     send_command_logged(
         client,
         &AtCallingLineIdentificationPresentationWrite {
@@ -118,7 +121,7 @@ pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
 pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     pico: &mut U,
-    number: &'static str,
+    number: &String<30>,
     duration_millis: u64,
 ) {
     send_command_logged(
@@ -134,7 +137,7 @@ pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     send_command_logged(
         client,
         &AtDialNumber {
-            number: String::<16>::try_from(number).unwrap(),
+            number: number.clone(),
         },
         "AtSwapAudioChannelsAtDialNumberWrite".to_string(),
     )
@@ -224,7 +227,13 @@ mod tests {
         client.results.push_back(Ok("".as_bytes()));
 
         let mut pico = crate::at::tests::PicoMock::default();
-        call_number(&mut client, &mut pico, "+36301234567", 100).await;
+        call_number(
+            &mut client,
+            &mut pico,
+            &String::try_from("+36301234567").unwrap(),
+            100,
+        )
+        .await;
         assert_eq!(3, client.sent_commands.len());
         assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
         assert_eq!("ATD+36301234567,i;\r", client.sent_commands.get(1).unwrap());

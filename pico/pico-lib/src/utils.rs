@@ -1,5 +1,9 @@
 use defmt::info;
 
+use core::num::ParseFloatError;
+use core::num::ParseIntError;
+use core::str::Utf8Error;
+
 use alloc::collections::vec_deque::VecDeque;
 use alloc::string::String;
 use libm::{asin, cos, pow, sin, sqrt};
@@ -39,6 +43,51 @@ pub fn bytes_to_string<const N: usize>(
         let _ = data.push(*c);
     }
     return atat::heapless::String::<N>::from_utf8(data).unwrap();
+}
+
+pub fn astring_to_string<'a, const N: usize>(string: &'a str) -> atat::heapless::String<N> {
+    return atat::heapless::String::<N>::try_from(string).unwrap();
+}
+
+extern crate atat;
+
+#[allow(dead_code)] // field `0` is never read, TODO: research
+pub struct AtatError(atat::Error);
+
+impl From<ParseFloatError> for AtatError {
+    fn from(_: ParseFloatError) -> Self {
+        AtatError(atat::Error::Parse)
+    }
+}
+
+impl From<ParseIntError> for AtatError {
+    fn from(_: ParseIntError) -> Self {
+        AtatError(atat::Error::Parse)
+    }
+}
+
+impl From<()> for AtatError {
+    fn from(_: ()) -> Self {
+        AtatError(atat::Error::Parse)
+    }
+}
+
+impl From<Utf8Error> for AtatError {
+    fn from(_: Utf8Error) -> Self {
+        AtatError(atat::Error::Parse)
+    }
+}
+
+impl From<atat::Error> for AtatError {
+    fn from(value: atat::Error) -> Self {
+        AtatError(value)
+    }
+}
+
+impl From<atat::serde_at::de::Error> for AtatError {
+    fn from(_: atat::serde_at::de::Error) -> Self {
+        AtatError(atat::Error::Parse)
+    }
 }
 
 pub struct LogBE {
