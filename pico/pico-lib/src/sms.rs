@@ -6,11 +6,10 @@ use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
-use atat::heapless_bytes::Bytes;
 use defmt::info;
 
 use crate::at::NoResponse;
-use crate::utils::AtatError;
+use crate::hexstr::UCS2HexString;
 use crate::utils::send_command_logged;
 
 // 4.2.2 AT+CMGF Select SMS Message Format
@@ -45,7 +44,6 @@ impl<'a> AtatCmd for AtSMSData {
     const MAX_LEN: usize = 160;
     const MAX_TIMEOUT_MS: u32 = 60000;
 
-    // TODO this is not working!
     fn write(&self, buf: &mut [u8]) -> usize {
         let bytes = self.message.as_bytes();
         let len = bytes.len();
@@ -59,19 +57,14 @@ impl<'a> AtatCmd for AtSMSData {
         &self,
         resp: Result<&[u8], atat::InternalError>,
     ) -> Result<Self::Response, atat::Error> {
-        // TODO, deserialize with serde_at ?
         match resp {
             Ok(v) => {
-                let h = || -> Result<i32, AtatError> {
-                    let s = core::str::from_utf8(&v["+CMGS: ".len()..])?;
-                    let mr: i32 = s.parse()?;
-                    Ok(mr)
-                };
-
-                match h() {
-                    Ok(v) => Ok(SMSDataResponse { mr: v }),
-                    Err(_) => Err(atat::Error::Parse),
-                }
+                let s = core::str::from_utf8(&v["+CMGS: ".len()..])
+                    .map_err(|_o| -> atat::Error { atat::Error::Parse })?;
+                let mr: i32 = s
+                    .parse()
+                    .map_err(|_o| -> atat::Error { atat::Error::Parse })?;
+                return Ok(SMSDataResponse { mr: mr });
             }
             Err(_) => Err(atat::Error::Parse),
         }
@@ -109,24 +102,11 @@ pub enum ReadSMSMode {
 #[derive(Debug, Clone, AtatResp, PartialEq, Default)]
 pub struct SMSMessageResponse {
     stat: String<30>,
-    sn: String<30>,
+    sn: UCS2HexString<64>,
     mid: Option<String<30>>,
     date_time: String<30>,
-    // Note the message is not in UTF-8.
-    //
-    // 3.2.12 AT+CSCS Select TE Character Set
-    //   "GSM" 7-bit, "UCS2", "IRA", "HEX", "PCCP", "PCDN", "8859-1"
-    //
-    // The default is IRA on my module. A hungarian text was sent in seemingly
-    // ISO 8859-1 encoding, at least the following did work on it:
-    // fn latin1_to_string(s: &[u8]) -> String {
-    //   s.iter().map(|&c| c as char).collect()
-    // }
-    //
-    // Some text arrives in UCS2 hex encoded, see the tests.
-    //
-    // For tATA, no proper decoding is needed.
-    message: Bytes<512>,
+    // Text mode + UCS2 charset is assumed
+    message: UCS2HexString<1024>,
 }
 
 // 4.2.8 AT+CNMI New SMS Message Indications
@@ -180,16 +160,40 @@ pub struct NewMessageIndicationUrc {
     pub index: i32,
 }
 
+// 3.2.12 AT+CSCS Select TE Character Set
+// AT+CSCS=<chset>
+// The character set affects transmission and reception of SMS and SMS Cell Broadcast messages,
+// the entry and display of phone book entries text field and SIM Application Toolkit alpha strings.
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CSCS", NoResponse)]
+pub struct AtSelectTECharsetWrite {
+    pub chset: String<30>, // "GSM" 7-bit, "UCS2", "IRA", "HEX", "PCCP", "PCDN", "8859-1"
+}
+
 pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     _pico: &mut U,
 ) {
+    // PDU mode might make more sense, currently HEX + Text mod is assumed.
+    // http://rfc.nop.hu/sms/default.htm
+    // https://en.wikipedia.org/wiki/GSM_03.40
     send_command_logged(
         client,
         &AtSelectSMSMessageFormatWrite {
             mode: MessageMode::Text,
         },
         "AtSelectSMSMessageFormatWrite".to_string(),
+    )
+    .await
+    .ok();
+
+    // TODO: SMSSending is not adjusted yet. Either use plain text for send and UCS2 only for receive or try it with UCS2HexString<> parameters.
+    send_command_logged(
+        client,
+        &AtSelectTECharsetWrite {
+            chset: String::try_from("UCS2").unwrap(),
+        },
+        "AtSelectTECharsetWrite".to_string(),
     )
     .await
     .ok();
@@ -253,13 +257,9 @@ pub async fn receive_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
         .await
         {
             Ok(v) => {
-                use atat::nom::AsBytes;
                 info!(
                     "SMS RESP state={} date={} sender={} message={}",
-                    v.stat,
-                    v.date_time,
-                    v.sn,
-                    v.message.as_bytes()
+                    v.stat, v.date_time, v.sn, v.message
                 );
             }
             Err(_) => break,
@@ -272,7 +272,7 @@ mod tests {
     use crate::cmd_serialization_tests;
 
     use super::*;
-    use atat::{AtatCmd, serde_at};
+    use atat::AtatCmd;
 
     cmd_serialization_tests! {
         test_at_select_sms_message_format_write: (
@@ -350,39 +350,36 @@ mod tests {
         assert_eq!(
             SMSMessageResponse {
                 stat: String::try_from("REC READ").unwrap(),
-                sn: String::try_from("+36301234567").unwrap(),
+                sn: UCS2HexString { text: String::try_from("+36301234567").unwrap(), quoted: true },
                 mid: Some(String::new()),
                 date_time: String::try_from("25/04/25,10:37:39+08").unwrap(),
-                message: serde_at::from_slice(b"$tATA/location/12345").unwrap(),
+                message: UCS2HexString { text: String::try_from("$tATA/location/12345").unwrap(), quoted: false },
             },
-            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"+36301234567\",\"\",\"25/04/25,10:37:39+08\"\r\n$tATA/location/12345\r\n"))
+            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"002B00330036003300300031003200330034003500360037\",\"\",\"25/04/25,10:37:39+08\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035\r\n"))
                 .unwrap(),
         );
 
         assert_eq!(
             SMSMessageResponse {
                 stat: String::try_from("REC READ").unwrap(),
-                sn: String::try_from("+36301234567").unwrap(),
+                sn: UCS2HexString { text: String::try_from("+36301234567").unwrap(), quoted: true },
                 mid: Some(String::new()),
                 date_time: String::try_from("25/04/25,10:37:39+08").unwrap(),
-                message: serde_at::from_slice(b"\xdcdv\xf6zlettel: Yettel").unwrap(),
+                message: UCS2HexString { text: String::try_from("Köszönjük.\nÜdvözlettel Yettel.").unwrap(), quoted: false },
             },
-            // seems like this is ISO 8859-1 encoded
-            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"+36301234567\",\"\",\"25/04/25,10:37:39+08\"\r\n\xdcdv\xf6zlettel: Yettel\r\n"))
+            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"002B00330036003300300031003200330034003500360037\",\"\",\"25/04/25,10:37:39+08\"\r\n004B00F60073007A00F6006E006A00FC006B002E000A00DC0064007600F6007A006C0065007400740065006C002000590065007400740065006C002E\r\n"))
                 .unwrap(),
         );
 
         assert_eq!(
             SMSMessageResponse {
                 stat: String::try_from("REC READ").unwrap(),
-                sn: String::try_from("+36301234567").unwrap(),
+                sn: UCS2HexString { text: String::try_from("+36301234567").unwrap(), quoted: true },
                 mid: Some(String::new()),
                 date_time: String::try_from("25/04/25,10:37:39+08").unwrap(),
-                message: serde_at::from_slice(b"n00540061006D00E100730020004400F6006D0151006B0020D83DDE0E").unwrap(),
+                message: UCS2HexString { text: String::try_from("Tamás Dömők 😎").unwrap(), quoted: false },
             },
-            // seems like this is UCS2 character strings are converted to hexadecimal numbers from 0000 to FFFF
-            // the text was: Tamás Dömők :cool smiley
-            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"+36301234567\",\"\",\"25/04/25,10:37:39+08\"\r\nn00540061006D00E100730020004400F6006D0151006B0020D83DDE0E\r\n"))
+            cmd.parse(Ok(b"+CMGR: \"REC READ\",\"002B00330036003300300031003200330034003500360037\",\"\",\"25/04/25,10:37:39+08\"\r\n00540061006D00E100730020004400F6006D0151006B0020D83DDE0E\r\n"))
                 .unwrap(),
         );
     }
@@ -392,12 +389,14 @@ mod tests {
         let mut client = crate::at::tests::ClientMock::default();
         client.results.push_back(Ok("".as_bytes()));
         client.results.push_back(Ok("".as_bytes()));
+        client.results.push_back(Ok("".as_bytes()));
 
         let mut pico = crate::at::tests::PicoMock::default();
         init(&mut client, &mut pico).await;
-        assert_eq!(2, client.sent_commands.len());
+        assert_eq!(3, client.sent_commands.len());
         assert_eq!("AT+CMGF=1\r", client.sent_commands.get(0).unwrap());
-        assert_eq!("AT+CNMI=2,1,0,0,0\r", client.sent_commands.get(1).unwrap());
+        assert_eq!("AT+CSCS=\"UCS2\"\r", client.sent_commands.get(1).unwrap());
+        assert_eq!("AT+CNMI=2,1,0,0,0\r", client.sent_commands.get(2).unwrap());
     }
 
     #[tokio::test]
@@ -428,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn test_receive_sms() {
         let mut client = crate::at::tests::ClientMock::default();
-        client.results.push_back(Ok("+CMGR: \"REC READ\",\"+36301234567\",\"\",\"26/01/10,17:25:32+04\"\r\n$tATA/location/12345".as_bytes()));
+        client.results.push_back(Ok("+CMGR: \"REC READ\",\"002B00330036003300300031003200330034003500360037\",\"\",\"26/01/10,17:25:32+04\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035".as_bytes()));
         client.results.push_back(Err(atat::InternalError::Timeout));
 
         let mut pico = crate::at::tests::PicoMock::default();

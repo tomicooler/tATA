@@ -90,15 +90,15 @@ async fn main(spawner: Spawner) {
     let (tx_pin, rx_pin, uart) = (p.PIN_0, p.PIN_1, p.UART0);
 
     static INGRESS_BUF: StaticCell<[u8; INGRESS_BUF_SIZE]> = StaticCell::new();
-    static TX_BUF: StaticCell<[u8; 256]> = StaticCell::new();
-    static RX_BUF: StaticCell<[u8; 256]> = StaticCell::new();
+    static TX_BUF: StaticCell<[u8; 512]> = StaticCell::new();
+    static RX_BUF: StaticCell<[u8; 512]> = StaticCell::new();
     let uart = BufferedUart::new(
         uart,
         tx_pin,
         rx_pin,
         Irqs,
-        TX_BUF.init([0; 256]),
-        RX_BUF.init([0; 256]),
+        TX_BUF.init([0; 512]),
+        RX_BUF.init([0; 512]),
         uart::Config::default(),
     );
     let (writer, reader) = uart.split();
@@ -111,11 +111,11 @@ async fn main(spawner: Spawner) {
         &RES_SLOT,
         &URC_CHANNEL,
     );
-    static BUF: StaticCell<[u8; 1024]> = StaticCell::new();
+    static BUF: StaticCell<[u8; 2048]> = StaticCell::new();
     let mut client = Client::new(
         writer,
         &RES_SLOT,
-        BUF.init([0; 1024]),
+        BUF.init([0; 2048]),
         atat::Config::default(),
     );
 
