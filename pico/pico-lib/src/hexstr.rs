@@ -1,7 +1,8 @@
 use alloc::{fmt, format, vec::Vec};
 use atat::{
+    AtatLen,
     heapless::String,
-    serde_at::serde::{self, Deserialize, de::Visitor},
+    serde_at::serde::{self, Deserialize, Serialize, de::Visitor},
 };
 use core::{num::ParseIntError, str::FromStr};
 use defmt::Format;
@@ -133,6 +134,25 @@ impl<const N: usize> fmt::Display for UCS2HexString<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.text)
     }
+}
+
+impl<const N: usize> Serialize for UCS2HexString<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if !self.quoted {
+            todo!()
+        }
+
+        let v: String<512> = encode_utf16_hex_string(self.text.as_bytes())
+            .map_err(|_o| -> S::Error { serde::ser::Error::custom("encode utf-16 error") })?;
+        return serializer.serialize_str(v.as_str());
+    }
+}
+
+impl<const N: usize> AtatLen for UCS2HexString<N> {
+    const LEN: usize = N * 2;
 }
 
 #[cfg(test)]

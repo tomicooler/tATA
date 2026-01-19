@@ -10,6 +10,7 @@ use defmt::info;
 
 use crate::at::NoResponse;
 use crate::hexstr::UCS2HexString;
+use crate::hexstr::encode_utf16_hex_string;
 use crate::utils::send_command_logged;
 
 // 4.2.2 AT+CMGF Select SMS Message Format
@@ -29,13 +30,13 @@ pub enum MessageMode {
 // 4.2.5 AT+CMGS Send SMS Message
 // AT+CMGS=<da>[,[<toda>]]<CR>text is entered[ctrl-Z/ESC]
 #[derive(Clone, Debug, Format, AtatCmd)]
-#[at_cmd("+CMGS", SMSMessageResponse, timeout_ms = 5000)]
+#[at_cmd("+CMGS", NoResponse, timeout_ms = 5000)] // NoResponse == waiting for prompt ">"
 pub struct AtSMSSend {
-    pub number: String<30>,
+    pub number: UCS2HexString<30>,
 }
 #[derive(Clone, Debug)]
 pub struct AtSMSData {
-    pub message: String<160>,
+    pub message: UCS2HexString<160>,
 }
 
 impl<'a> AtatCmd for AtSMSData {
@@ -45,7 +46,9 @@ impl<'a> AtatCmd for AtSMSData {
     const MAX_TIMEOUT_MS: u32 = 60000;
 
     fn write(&self, buf: &mut [u8]) -> usize {
-        let bytes = self.message.as_bytes();
+        // TODO: UCS2HexString could be enchanted with append ctrl+z then AtSMSData would not need custom write/parse.
+        let v: String<512> = encode_utf16_hex_string(self.message.text.as_bytes()).unwrap();
+        let bytes = v.as_bytes();
         let len = bytes.len();
         let ctrl_z = b"\x1a";
         buf[..len].copy_from_slice(bytes);
@@ -174,7 +177,7 @@ pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     _pico: &mut U,
 ) {
-    // PDU mode might make more sense, currently HEX + Text mod is assumed.
+    // PDU mode might make more sense, currently UCS2 + Text mod is assumed.
     // http://rfc.nop.hu/sms/default.htm
     // https://en.wikipedia.org/wiki/GSM_03.40
     send_command_logged(
@@ -222,7 +225,10 @@ pub async fn send_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     send_command_logged(
         client,
         &AtSMSSend {
-            number: number.clone(),
+            number: UCS2HexString {
+                text: number.clone(),
+                quoted: true,
+            },
         },
         "AtSMSSend".to_string(),
     )
@@ -231,7 +237,10 @@ pub async fn send_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     send_command_logged(
         client,
         &AtSMSData {
-            message: message.clone(),
+            message: UCS2HexString {
+                text: message.clone(),
+                quoted: false,
+            },
         },
         "AtSMSData".to_string(),
     )
@@ -283,15 +292,15 @@ mod tests {
         ),
         test_at_send_sms_1: (
             AtSMSSend {
-                number: String::try_from("+361234567").unwrap(),
+                number: UCS2HexString { text: String::try_from("+36301234567").unwrap(), quoted: true },
             },
-            "AT+CMGS=\"+361234567\"\r",
+            "AT+CMGS=\"002B00330036003300300031003200330034003500360037\"\r",
         ),
         test_at_send_sms_2: (
             AtSMSData {
-                message: String::try_from("this is the message").unwrap(),
+                message: UCS2HexString { text: String::try_from("this is the text message").unwrap(), quoted: false },
             },
-            "this is the message\x1a",
+            "00740068006900730020006900730020007400680065002000740065007800740020006D006500730073006100670065\x1a",
         ),
         test_at_new_sms_message_indications_write: (
             AtNewSMSMessageIndicationsWrite {
@@ -331,7 +340,10 @@ mod tests {
     #[test]
     fn test_send_sms_response() {
         let cmd = AtSMSData {
-            message: String::try_from("data").unwrap(),
+            message: UCS2HexString {
+                text: String::try_from("data").unwrap(),
+                quoted: false,
+            },
         };
 
         assert_eq!(
@@ -415,11 +427,11 @@ mod tests {
         .await;
         assert_eq!(2, client.sent_commands.len());
         assert_eq!(
-            "AT+CMGS=\"+36301234567\"\r",
+            "AT+CMGS=\"002B00330036003300300031003200330034003500360037\"\r",
             client.sent_commands.get(0).unwrap()
         );
         assert_eq!(
-            "this is the text message\x1a",
+            "00740068006900730020006900730020007400680065002000740065007800740020006D006500730073006100670065\x1a",
             client.sent_commands.get(1).unwrap()
         );
     }
