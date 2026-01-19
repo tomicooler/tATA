@@ -69,7 +69,7 @@ cargo check
 # format
 cargo fmt
 
-# fun a specific test case
+# run a specific test case
 RUST_BACKTRACE=1 cargo test test_call_number -- --nocapture
 ```
 
