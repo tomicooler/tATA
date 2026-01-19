@@ -141,12 +141,13 @@ impl<const N: usize> Serialize for UCS2HexString<N> {
     where
         S: serde::Serializer,
     {
-        if !self.quoted {
-            todo!()
-        }
-
         let v: String<512> = encode_utf16_hex_string(self.text.as_bytes())
             .map_err(|_o| -> S::Error { serde::ser::Error::custom("encode utf-16 error") })?;
+
+        if !self.quoted {
+            return serializer.serialize_bytes(v.as_bytes());
+        }
+
         return serializer.serialize_str(v.as_str());
     }
 }
