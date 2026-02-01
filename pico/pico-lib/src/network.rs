@@ -99,6 +99,49 @@ pub enum OperatorMode {
     Manual = 1,
 }
 
+// 3.2.42 AT+CFUN Set Phone Functionality
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CFUN?", PhoneFunctionalityReadResponse, timeout_ms = 10000)]
+pub struct AtSetPhoneFunctionalityRead;
+
+// +CFUN: <fun>
+#[derive(Debug, Format, Clone, AtatResp, PartialEq)]
+pub struct PhoneFunctionalityReadResponse {
+    #[at_arg(position = 0)]
+    pub fun: Functionality,
+}
+
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
+pub enum Functionality {
+    #[default]
+    Minimum = 0,
+    Full = 1,
+    DisableTxRx = 4,
+}
+
+// 6.2.20 AT+CSCLK Configure Slow Clock
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CSCLK?", SlowClockResponse)]
+pub struct AtConfigureSlowClockRead;
+
+// +CSCLK: <mode>
+#[derive(Debug, Format, Clone, AtatResp, PartialEq)]
+pub struct SlowClockResponse {
+    #[at_arg(position = 0)]
+    pub mode: SlowClockMode,
+}
+
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum, Default)]
+pub enum SlowClockMode {
+    #[default]
+    DisableSlowClock = 0,
+    EnableSlowClockByDTR = 1,
+    // Two caveats:
+    //   1. you should input some characters (at least one) to wake the module
+    //   2. 100ms or more is needed between the waking characters and following AT commands
+    EnableSlowClockAuto = 2,
+}
+
 #[cfg(test)]
 extern crate std;
 
@@ -117,12 +160,43 @@ pub async fn init_network<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
 
         match send_command_logged(client, &AtInit, "AtInit".to_string()).await {
             Ok(_) => {
-                break;
+                match send_command_logged(
+                    client,
+                    &AtSetPhoneFunctionalityRead,
+                    "AtSetPhoneFunctionalityRead".to_string(),
+                )
+                .await
+                {
+                    Ok(v) => {
+                        info!("  {:?}", v);
+                        if v.fun == Functionality::Full {
+                            break;
+                        } else {
+                            pico.restart_module().await;
+                        }
+                    }
+                    Err(_) => {
+                        pico.restart_module().await;
+                    }
+                }
             }
             Err(_) => {
                 pico.restart_module().await;
             }
         }
+    }
+
+    match send_command_logged(
+        client,
+        &AtConfigureSlowClockRead,
+        "AtConfigureSlowClockRead".to_string(),
+    )
+    .await
+    {
+        Ok(v) => {
+            info!("  {:?}", v);
+        }
+        Err(_) => (),
     }
 
     loop {
@@ -213,6 +287,14 @@ mod tests {
         test_operator_selection_read: (
             AtOperatorSelectionRead,
             "AT+COPS?\r",
+        ),
+        test_set_phone_functionality_read: (
+            AtSetPhoneFunctionalityRead,
+            "AT+CFUN?\r",
+        ),
+        test_configure_slow_clock_read: (
+            AtConfigureSlowClockRead,
+            "AT+CSCLK?\r",
         ),
     }
 
@@ -311,6 +393,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_set_phone_functionality_read_responses() {
+        let cmd = AtSetPhoneFunctionalityRead;
+        assert_eq!(
+            PhoneFunctionalityReadResponse {
+                fun: Functionality::Minimum,
+            },
+            cmd.parse(Ok(b"+CFUN: 0\r\n")).unwrap()
+        );
+        assert_eq!(
+            PhoneFunctionalityReadResponse {
+                fun: Functionality::Full,
+            },
+            cmd.parse(Ok(b"+CFUN: 1\r\n")).unwrap()
+        );
+        assert_eq!(
+            PhoneFunctionalityReadResponse {
+                fun: Functionality::DisableTxRx,
+            },
+            cmd.parse(Ok(b"+CFUN: 4\r\n")).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_configure_slow_clock_read_responses() {
+        let cmd = AtConfigureSlowClockRead;
+        assert_eq!(
+            SlowClockResponse {
+                mode: SlowClockMode::DisableSlowClock,
+            },
+            cmd.parse(Ok(b"+CSCLK: 0\r\n")).unwrap()
+        );
+        assert_eq!(
+            SlowClockResponse {
+                mode: SlowClockMode::EnableSlowClockByDTR,
+            },
+            cmd.parse(Ok(b"+CSCLK: 1\r\n")).unwrap()
+        );
+        assert_eq!(
+            SlowClockResponse {
+                mode: SlowClockMode::EnableSlowClockAuto,
+            },
+            cmd.parse(Ok(b"+CSCLK: 2\r\n")).unwrap()
+        );
+    }
+
     #[tokio::test]
     async fn test_init_network() {
         let mut client = crate::at::tests::ClientMock::default();
@@ -318,6 +446,8 @@ mod tests {
         client.results.push_back(Err(atat::InternalError::Error)); // AT
         client.results.push_back(Ok("".as_bytes())); // ATE retried
         client.results.push_back(Ok("".as_bytes())); // AT retried
+        client.results.push_back(Ok("1".as_bytes())); // AT+CFUN full
+        client.results.push_back(Ok("0".as_bytes())); // AT+CSCLK slow clock is disabled
         client.results.push_back(Ok("0,2".as_bytes())); // AT+CGREG Searching
         client.results.push_back(Ok("0,1".as_bytes())); // AT+CGREG Ready
         client.results.push_back(Ok("READY".as_bytes())); // AT+CPIN
@@ -328,16 +458,18 @@ mod tests {
 
         let mut pico = crate::at::tests::PicoMock::default();
         init_network(&mut client, &mut pico).await;
-        assert_eq!(9, client.sent_commands.len());
+        assert_eq!(11, client.sent_commands.len());
         assert_eq!("ATE0\r", client.sent_commands.get(0).unwrap());
         assert_eq!("AT\r", client.sent_commands.get(1).unwrap());
         assert_eq!("ATE0\r", client.sent_commands.get(2).unwrap());
         assert_eq!("AT\r", client.sent_commands.get(3).unwrap());
-        assert_eq!("AT+CGREG?\r", client.sent_commands.get(4).unwrap());
-        assert_eq!("AT+CGREG?\r", client.sent_commands.get(5).unwrap());
-        assert_eq!("AT+CPIN?\r", client.sent_commands.get(6).unwrap());
-        assert_eq!("AT+CSQ\r", client.sent_commands.get(7).unwrap());
-        assert_eq!("AT+COPS?\r", client.sent_commands.get(8).unwrap());
+        assert_eq!("AT+CFUN?\r", client.sent_commands.get(4).unwrap());
+        assert_eq!("AT+CSCLK?\r", client.sent_commands.get(5).unwrap());
+        assert_eq!("AT+CGREG?\r", client.sent_commands.get(6).unwrap());
+        assert_eq!("AT+CGREG?\r", client.sent_commands.get(7).unwrap());
+        assert_eq!("AT+CPIN?\r", client.sent_commands.get(8).unwrap());
+        assert_eq!("AT+CSQ\r", client.sent_commands.get(9).unwrap());
+        assert_eq!("AT+COPS?\r", client.sent_commands.get(10).unwrap());
 
         assert_eq!(1, pico.sleep_calls.len());
         assert_eq!(1000u64, *pico.sleep_calls.get(0).unwrap());
