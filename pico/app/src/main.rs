@@ -8,23 +8,24 @@ use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either3, select3};
 use embassy_rp::adc::{Adc, Channel, Config, InterruptHandler as AdcInterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output, Pull};
 use embassy_rp::peripherals::UART0;
+use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc};
 use embassy_rp::uart::{self, BufferedInterruptHandler, BufferedUart, BufferedUartRx};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub;
-use embassy_sync::pubsub::Subscriber;
 use embassy_time::{Duration, Timer};
 use embedded_alloc::LlffHeap as Heap;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+use embassy_rp::watchdog::Watchdog;
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::utils::{astring_to_string, send_command_logged};
+use pico_lib::utils::send_command_logged;
 use pico_lib::{at, battery, call, gps, gsm, network, sms};
 
 extern crate alloc;
@@ -39,6 +40,7 @@ const URC_SUBSCRIBERS: usize = 3;
 bind_interrupts!(struct Irqs {
     UART0_IRQ => BufferedInterruptHandler<UART0>;
     ADC_IRQ_FIFO => AdcInterruptHandler;
+    RTC_IRQ => embassy_rp::rtc::InterruptHandler;
 });
 
 #[embassy_executor::main]
@@ -51,8 +53,28 @@ async fn main(spawner: Spawner) {
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
     let p = embassy_rp::init(Default::default());
+    let mut rtc = Rtc::new(p.RTC, Irqs);
+
+    if !rtc.is_running() {
+        let now = DateTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            day_of_week: DayOfWeek::Saturday,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        };
+        rtc.set_datetime(now).unwrap();
+        // The rp2040 chip will always add a Feb 29th on every year that is divisible by 4,
+        // but this may be incorrect (e.g. on century years)
+        rtc.set_leap_year_check(false);
+    }
     Timer::after(Duration::from_secs(2)).await;
     info!("STARTED");
+
+    let watchdog = Watchdog::new(p.WATCHDOG);
+    spawner.spawn(watchdog_task(watchdog)).unwrap();
 
     let mut pico = Pico {
         led: Output::new(p.PIN_25, Level::Low),
@@ -127,10 +149,7 @@ async fn main(spawner: Spawner) {
     Timer::after(Duration::from_millis(500)).await;
     info!("After spawning reader Task");
 
-    let sub = URC_CHANNEL.subscribe().unwrap();
-    spawner.spawn(urc_handler_task(sub)).unwrap();
-    info!("After spawning Urc Task");
-    Timer::after(Duration::from_secs(2)).await;
+    let mut sub = URC_CHANNEL.subscribe().unwrap();
 
     info!("Network init");
     Timer::after(Duration::from_secs(2)).await;
@@ -146,23 +165,12 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(100)).await;
     }
 
-    match send_command_logged(
-        &mut client,
-        &battery::AtBatteryChargeExecute,
-        "AtBatteryChargeExecute".to_string(),
-    )
-    .await
-    {
-        Ok(v) => info!("  {:?}", v),
-        Err(_) => (),
-    }
-
-    match gps::get_gps_location(&mut client, &mut pico, 10).await {
+    match gps::get_gps_location(&mut client, &mut pico, 5).await {
         Some(v) => info!("GPS location: {:?}", v),
         None => (),
     }
 
-    match gsm::get_gsm_location(&mut client, &mut pico, 10, "online").await {
+    match gsm::get_gsm_location(&mut client, &mut pico, 5, "online").await {
         Some(v) => info!("GSM location: {:?}", v),
         None => (),
     }
@@ -191,21 +199,139 @@ async fn main(spawner: Spawner) {
     sms::receive_sms(&mut client, &mut pico).await;
 
     let mut counter = 0u64;
+    rtc.schedule_alarm(DateTimeFilter::default().second(30));
+
     loop {
-        pico.set_led_high();
-        Timer::after(Duration::from_millis(500)).await;
+        // Wait for 5 seconds or until the alarm is triggered
+        match select3(
+            Timer::after_secs(4),
+            rtc.wait_for_alarm(),
+            sub.next_message(),
+        )
+        .await
+        {
+            // Timer expired
+            Either3::First(_) => {
+                pico.set_led_high();
+                Timer::after(Duration::from_millis(500)).await;
+                let dt = rtc.now().unwrap();
+                info!(
+                    "Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                );
 
-        counter += 1;
+                counter += 1;
+                let level = adc.read(&mut p26).await.unwrap();
+                let temp = convert_to_celsius(adc.read(&mut ts).await.unwrap());
+                info!(
+                    "Tick counter: {} Pin 26 ADC: {} Temp: {}",
+                    counter, level, temp
+                );
 
-        let level = adc.read(&mut p26).await.unwrap();
-        let temp = convert_to_celsius(adc.read(&mut ts).await.unwrap());
-        info!(
-            "Tick counter: {} Pin 26 ADC: {} Temp: {}",
-            counter, level, temp
-        );
+                pico.set_led_low();
+                Timer::after(Duration::from_millis(500)).await;
+            }
+            // Alarm triggered
+            Either3::Second(_) => {
+                let dt = rtc.now().unwrap();
+                info!(
+                    "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                );
+                rtc.schedule_alarm(DateTimeFilter::default().second(30));
 
-        pico.set_led_low();
-        Timer::after(Duration::from_millis(500)).await;
+                match gps::get_gps_location(&mut client, &mut pico, 5).await {
+                    Some(v) => info!("GPS location: {:?}", v),
+                    None => (),
+                }
+
+                match send_command_logged(
+                    &mut client,
+                    &battery::AtBatteryChargeExecute,
+                    "AtBatteryChargeExecute".to_string(),
+                )
+                .await
+                {
+                    Ok(v) => info!("  {:?}", v),
+                    Err(_) => (),
+                }
+            }
+            Either3::Third(m) => match &m {
+                pubsub::WaitResult::Message(u) => match u {
+                    urc::Urc::CallReady => {
+                        info!("URC CallReady");
+                    }
+                    urc::Urc::SMSReady => {
+                        info!("URC SMSReady");
+                    }
+                    urc::Urc::SetBearer(_v) => {
+                        info!("URC SetBearer");
+                    }
+                    urc::Urc::GprsDisconnected(_v) => {
+                        info!("URC GprsDisconnected");
+                    }
+                    urc::Urc::Ring => {
+                        info!("URC Ring");
+                    }
+                    urc::Urc::NormalPowerDown => {
+                        info!("URC NormalPowerDown");
+                    }
+                    urc::Urc::UnderVoltagePowerDown => {
+                        info!("URC UnderVoltagePowerDown");
+                    }
+                    urc::Urc::UnderVoltageWarning => {
+                        info!("URC UnderVoltageWarning");
+                    }
+                    urc::Urc::OverVoltagePowerDown => {
+                        info!("URC OverVoltagePowerDown");
+                    }
+                    urc::Urc::OverVoltageWarning => {
+                        info!("URC OverVoltageWarning");
+                    }
+                    urc::Urc::ChargeOnlyMode => {
+                        info!("URC ChargeOnlyMode");
+                        call::call_number(
+                            &mut client,
+                            &mut pico,
+                            &phone_number,
+                            Duration::from_secs(10).as_millis(),
+                        )
+                        .await;
+                    }
+                    urc::Urc::Ready => {
+                        info!("URC Ready");
+                    }
+                    urc::Urc::ConnectOK1 => {
+                        info!("URC ConnectOK1");
+                    }
+                    urc::Urc::ConnectOK => {
+                        info!("URC ConnectOK");
+                    }
+                    urc::Urc::ClipUrc(v) => {
+                        info!("URC ClipUrc number={}, type={}", v.number.as_str(), v.type_);
+                        if v.number == phone_number {
+                            Timer::after_millis(2000).await;
+                            call::answer_incoming_call(&mut client, &mut pico).await;
+                        } else {
+                            call::hangup_incoming_call(&mut client, &mut pico).await;
+                        }
+                    }
+                    urc::Urc::NewMessageIndicationUrc(v) => {
+                        info!(
+                            "URC NewMessageIndicationUrc index={} mem={}",
+                            v.index,
+                            v.mem.as_str()
+                        );
+                    }
+                    urc::Urc::EnterPinReadResponse(v) => {
+                        info!("URC EnterPinReadResponse code={}", v.code);
+                    }
+                },
+                pubsub::WaitResult::Lagged(b) => {
+                    info!("Urc Lagged messages: {}", b);
+                }
+            },
+        }
     }
 }
 
@@ -226,80 +352,13 @@ async fn ingress_task(
 }
 
 #[embassy_executor::task]
-async fn urc_handler_task(
-    mut sub: Subscriber<
-        'static,
-        CriticalSectionRawMutex,
-        urc::Urc,
-        URC_CAPACITY,
-        URC_SUBSCRIBERS,
-        1,
-    >,
-) -> ! {
-    info!("URC TASK SPAWNED");
+async fn watchdog_task(mut watchdog: Watchdog) -> ! {
+    info!("WATCHDOG TASK SPAWNED");
+    watchdog.start(Duration::from_millis(6000));
     loop {
-        let m = sub.next_message().await;
-        match m {
-            pubsub::WaitResult::Message(u) => match u {
-                urc::Urc::CallReady => {
-                    info!("URC CallReady");
-                }
-                urc::Urc::SMSReady => {
-                    info!("URC SMSReady");
-                }
-                urc::Urc::SetBearer(_v) => {
-                    info!("URC SetBearer");
-                }
-                urc::Urc::GprsDisconnected(_v) => {
-                    info!("URC GprsDisconnected");
-                }
-                urc::Urc::Ring => {
-                    info!("URC Ring");
-                }
-                urc::Urc::NormalPowerDown => {
-                    info!("URC NormalPowerDown");
-                }
-                urc::Urc::UnderVoltagePowerDown => {
-                    info!("URC UnderVoltagePowerDown");
-                }
-                urc::Urc::UnderVoltageWarning => {
-                    info!("URC UnderVoltageWarning");
-                }
-                urc::Urc::OverVoltagePowerDown => {
-                    info!("URC OverVoltagePowerDown");
-                }
-                urc::Urc::OverVoltageWarning => {
-                    info!("URC OverVoltageWarning");
-                }
-                urc::Urc::ChargeOnlyMode => {
-                    info!("URC ChargeOnlyMode");
-                }
-                urc::Urc::Ready => {
-                    info!("URC Ready");
-                }
-                urc::Urc::ConnectOK1 => {
-                    info!("URC ConnectOK1");
-                }
-                urc::Urc::ConnectOK => {
-                    info!("URC ConnectOK");
-                }
-                urc::Urc::ClipUrc(v) => {
-                    info!("URC ClipUrc number={}, type={}", v.number, v.type_);
-                }
-                urc::Urc::NewMessageIndicationUrc(v) => {
-                    info!(
-                        "URC NewMessageIndicationUrc index={} mem={}",
-                        v.index, v.mem
-                    );
-                }
-                urc::Urc::EnterPinReadResponse(v) => {
-                    info!("URC EnterPinReadResponse code={}", v.code);
-                }
-            },
-            pubsub::WaitResult::Lagged(b) => {
-                info!("Urc Lagged messages: {}", b);
-            }
-        }
+        Timer::after_millis(2000).await;
+        debug!("    WATCHDOG FEED");
+        watchdog.feed();
     }
 }
 
@@ -330,24 +389,50 @@ impl at::PicoHW for Pico<'_> {
     }
 
     async fn restart_module(&mut self) {
-        info!("Sim868 restart procedure");
+        // 5.3.2.3. Restart GSM by PWRKEY
+        //   1. power off the GSM (between 1.5s and 2s)
+        //   2. wait 800ms
+        //   3. power on the GSM (> 800ms)
+
+        info!("Sim868 restart procedure power");
+        info!(
+            "  power: is_high? {} is low? {}",
+            self.power.is_set_high(),
+            self.power.is_set_low()
+        );
+
+        /*
+        This power off procedure is not working as expected. TODO: investigate more.
 
         self.led.set_high();
         info!("Sim868 power off");
         self.power.set_high();
+        info!("  power: is_high? {} is low? {}", self.power.is_set_high(), self.power.is_set_low());
         // Customer can power off GSM by pulling down the PWRKEY pin for at least 1.5 second and release.
-        Timer::after_secs(2).await;
+        Timer::after_millis(1600).await;
         self.power.set_low();
         self.led.set_low();
+        info!("  power: is_high? {} is low? {}", self.power.is_set_high(), self.power.is_set_low());
+        */
 
         Timer::after_secs(1).await;
         self.led.set_high();
         info!("Sim868 power on");
         self.power.set_high();
+        info!(
+            "  power: is_high? {} is low? {}",
+            self.power.is_set_high(),
+            self.power.is_set_low()
+        );
         // Customer can power on GSM by pulling down the PWRKEY pin for at least 1 second and then release.
-        Timer::after_secs(1).await;
+        Timer::after_millis(900).await;
         self.power.set_low();
         self.led.set_low();
+        info!(
+            "  power: is_high? {} is low? {}",
+            self.power.is_set_high(),
+            self.power.is_set_low()
+        );
 
         Timer::after_secs(2).await;
         info!("Sim868 should be Ready");

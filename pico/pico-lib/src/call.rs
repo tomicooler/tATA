@@ -6,9 +6,9 @@ use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 use defmt::Format;
+use defmt::info;
 
 use crate::at::NoResponse;
-use crate::utils::LogBE;
 use crate::utils::send_command_logged;
 
 // 6.2.19 AT+CHFA Swap the Audio Channels
@@ -58,6 +58,16 @@ impl<'a> AtatCmd for AtDialNumber {
 #[at_cmd("+CHUP;", NoResponse)]
 pub struct AtHangup;
 
+// 2.2.8 ATH Disconnect Existing Connection
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("ATH", NoResponse, cmd_prefix = "", timeout_ms = 20000)]
+pub struct AtHangupIncomingCall;
+
+// 2.2.2 ATA Answer an Incoming Call
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("ATA", NoResponse, cmd_prefix = "", timeout_ms = 20000)]
+pub struct AtAnswerIncomingCall; // may be aborted by receiving a character during execution
+
 // 3.2.18 AT+CLIP Calling Line Identification Presentation
 // AT+CLIP=<n>
 #[derive(Clone, Debug, Format, AtatCmd)]
@@ -72,7 +82,7 @@ pub enum ClipMode {
     EnableClipNotification = 1, // +CLIP URC
 }
 
-// <number>,<type>[,<subaddr>,<satype>,<alphaId>,<CLI validity>]
+// +CLIP: <number>,<type>[,<subaddr>,<satype>,<alphaId>,<CLI validity>]
 #[derive(Debug, Clone, AtatResp, PartialEq, Default)]
 pub struct ClipUrc {
     pub number: String<30>,
@@ -100,6 +110,51 @@ pub enum ClipValidity {
     NotAvailable = 2,
 }
 
+// 6.2.4 AT+CMIC Change the Microphone Gain Level
+// AT+CMIC=<channel>,<gainlevel>
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CMIC", NoResponse)]
+pub struct AtChangeMicrophoneGainLevelWrite {
+    pub channel: MicAudioChannels,
+    pub gain_level: u8, // 0-15, 0dB - 1.5dB step - +22.5dB, default 10 or 6 on Main channel
+}
+
+#[derive(Debug, Format, Clone, PartialEq, AtatEnum)]
+pub enum MicAudioChannels {
+    Main = 1,
+    Aux = 2,
+    MainHandFree = 3,
+    AuxHandFree = 4,
+}
+
+// 6.2.50 AT+CEXTERNTONE Close or Open Microphone
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CEXTERNTONE", NoResponse)]
+pub struct AtCloseOrOpenMicrophoneWrite {
+    pub mode: MicrophoneMode,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum MicrophoneMode {
+    #[default]
+    ReOpen = 0,
+    Close = 1,
+}
+
+// 6.2.56 AT+CMICBIAS Close or Open the MICBIAS
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CMICBIAS", NoResponse)]
+pub struct AtCloseOrOpenMicBiasWrite {
+    pub mode: MicrophoneBias,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum MicrophoneBias {
+    Off = 0,
+    #[default]
+    On = 1,
+}
+
 pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     _pico: &mut U,
@@ -116,14 +171,7 @@ pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     )
     .await
     .ok();
-}
 
-pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
-    client: &mut T,
-    pico: &mut U,
-    number: &String<30>,
-    duration_millis: u64,
-) {
     send_command_logged(
         client,
         &AtSwapAudioChannelsWrite {
@@ -136,22 +184,86 @@ pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
 
     send_command_logged(
         client,
+        &AtChangeMicrophoneGainLevelWrite {
+            channel: MicAudioChannels::Main,
+            gain_level: 12,
+        },
+        "AtChangeMicrophoneGainLevelWrite".to_string(),
+    )
+    .await
+    .ok();
+
+    send_command_logged(
+        client,
+        &AtCloseOrOpenMicrophoneWrite {
+            mode: MicrophoneMode::ReOpen,
+        },
+        "AtCloseOrOpenMicrophoneWrite".to_string(),
+    )
+    .await
+    .ok();
+
+    send_command_logged(
+        client,
+        &AtCloseOrOpenMicBiasWrite {
+            mode: MicrophoneBias::On,
+        },
+        "AtCloseOrOpenMicBiasWrite".to_string(),
+    )
+    .await
+    .ok();
+}
+
+pub async fn call_number<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    pico: &mut U,
+    number: &String<30>,
+    duration_millis: u64,
+) {
+    send_command_logged(
+        client,
         &AtDialNumber {
             number: number.clone(),
         },
-        "AtSwapAudioChannelsAtDialNumberWrite".to_string(),
+        "AtDialNumber".to_string(),
     )
     .await
     .ok();
 
     {
-        let _l = LogBE::new("Sleeping".to_string());
+        info!("Sleeping {} ms", duration_millis);
         pico.sleep(duration_millis).await;
     }
 
     send_command_logged(client, &AtHangup, "AtHangup".to_string())
         .await
         .ok();
+}
+
+pub async fn answer_incoming_call<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    _pico: &mut U,
+) {
+    send_command_logged(
+        client,
+        &AtAnswerIncomingCall,
+        "AtAnswerIncomingCall".to_string(),
+    )
+    .await
+    .ok();
+}
+
+pub async fn hangup_incoming_call<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    _pico: &mut U,
+) {
+    send_command_logged(
+        client,
+        &AtHangupIncomingCall,
+        "AtHangupIncomingCall".to_string(),
+    )
+    .await
+    .ok();
 }
 
 #[cfg(test)]
@@ -184,6 +296,33 @@ mod tests {
             },
             "AT+CLIP=1\r",
         ),
+        test_at_hangup_incoming_call: (
+            AtHangupIncomingCall,
+            "ATH\r",
+        ),
+        test_at_answer_incoming_call: (
+            AtAnswerIncomingCall,
+            "ATA\r",
+        ),
+        test_at_change_microphone_gain_level: (
+            AtChangeMicrophoneGainLevelWrite {
+                channel: MicAudioChannels::Main,
+                gain_level: 12,
+            },
+            "AT+CMIC=1,12\r",
+        ),
+        test_at_close_or_open_microphone: (
+            AtCloseOrOpenMicrophoneWrite {
+                mode: MicrophoneMode::ReOpen,
+            },
+            "AT+CEXTERNTONE=0\r",
+        ),
+        test_at_close_or_open_microphone_bias: (
+            AtCloseOrOpenMicBiasWrite {
+                mode: MicrophoneBias::On,
+            },
+            "AT+CMICBIAS=1\r",
+        ),
     }
 
     #[test]
@@ -205,24 +344,33 @@ mod tests {
             cmd.parse(Ok(b"+CLIP: \"+36301234567\",145,\"\",0,\"\",0\r\n"))
                 .unwrap()
         );
+
+        // TODO:
+        // +CLIP: \"+36301234567\",1,0,\"\",0
     }
 
     #[tokio::test]
-    async fn test_sms_init() {
+    async fn test_call_init() {
         let mut client = crate::at::tests::ClientMock::default();
+        client.results.push_back(Ok("".as_bytes()));
+        client.results.push_back(Ok("".as_bytes()));
+        client.results.push_back(Ok("".as_bytes()));
         client.results.push_back(Ok("".as_bytes()));
         client.results.push_back(Ok("".as_bytes()));
 
         let mut pico = crate::at::tests::PicoMock::default();
         init(&mut client, &mut pico).await;
-        assert_eq!(1, client.sent_commands.len());
+        assert_eq!(5, client.sent_commands.len());
         assert_eq!("AT+CLIP=1\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(1).unwrap());
+        assert_eq!("AT+CMIC=1,12\r", client.sent_commands.get(2).unwrap());
+        assert_eq!("AT+CEXTERNTONE=0\r", client.sent_commands.get(3).unwrap());
+        assert_eq!("AT+CMICBIAS=1\r", client.sent_commands.get(4).unwrap());
     }
 
     #[tokio::test]
     async fn test_call_number() {
         let mut client = crate::at::tests::ClientMock::default();
-        client.results.push_back(Ok("".as_bytes()));
         client.results.push_back(Ok("".as_bytes()));
         client.results.push_back(Ok("".as_bytes()));
 
@@ -234,10 +382,9 @@ mod tests {
             100,
         )
         .await;
-        assert_eq!(3, client.sent_commands.len());
-        assert_eq!("AT+CHFA=1\r", client.sent_commands.get(0).unwrap());
-        assert_eq!("ATD+36301234567,i;\r", client.sent_commands.get(1).unwrap());
-        assert_eq!("AT+CHUP;\r", client.sent_commands.get(2).unwrap());
+        assert_eq!(2, client.sent_commands.len());
+        assert_eq!("ATD+36301234567,i;\r", client.sent_commands.get(0).unwrap());
+        assert_eq!("AT+CHUP;\r", client.sent_commands.get(1).unwrap());
 
         assert_eq!(1, pico.sleep_calls.len());
         assert_eq!(100u64, *pico.sleep_calls.get(0).unwrap());
