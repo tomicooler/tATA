@@ -25,7 +25,7 @@ use embassy_rp::watchdog::Watchdog;
 use pico_lib::at::PicoHW;
 use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::utils::send_command_logged;
+use pico_lib::utils::{astring_to_string, send_command_logged};
 use pico_lib::{at, battery, call, gps, gsm, network, sms};
 
 extern crate alloc;

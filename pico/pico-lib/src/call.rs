@@ -389,4 +389,26 @@ mod tests {
         assert_eq!(1, pico.sleep_calls.len());
         assert_eq!(100u64, *pico.sleep_calls.get(0).unwrap());
     }
+
+    #[tokio::test]
+    async fn test_answer_incoming_call() {
+        let mut client = crate::at::tests::ClientMock::default();
+        client.results.push_back(Ok("".as_bytes()));
+
+        let mut pico = crate::at::tests::PicoMock::default();
+        answer_incoming_call(&mut client, &mut pico).await;
+        assert_eq!(1, client.sent_commands.len());
+        assert_eq!("ATA\r", client.sent_commands.get(0).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_hangup_incoming_call() {
+        let mut client = crate::at::tests::ClientMock::default();
+        client.results.push_back(Ok("".as_bytes()));
+
+        let mut pico = crate::at::tests::PicoMock::default();
+        hangup_incoming_call(&mut client, &mut pico).await;
+        assert_eq!(1, client.sent_commands.len());
+        assert_eq!("ATH\r", client.sent_commands.get(0).unwrap());
+    }
 }
