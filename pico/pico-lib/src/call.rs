@@ -9,6 +9,7 @@ use defmt::Format;
 use defmt::info;
 
 use crate::at::NoResponse;
+use crate::hexstr::UCS2HexString;
 use crate::utils::send_command_logged;
 
 // 6.2.19 AT+CHFA Swap the Audio Channels
@@ -155,6 +156,64 @@ pub enum MicrophoneBias {
     On = 1,
 }
 
+// 17.2.1 AT+CTTS TTS Operation
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CTTS", NoResponse)]
+pub struct AtTextToSpeechOperationWrite {
+    pub mode: TextToSpeechOperationMode,
+    pub text: Option<UCS2HexString<512>>,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum TextToSpeechOperationMode {
+    #[default]
+    StopPlaying = 0, // NoResponse
+    StartPlayUCS2 = 1,
+    StartPlayASCII = 2,
+    StartPlayASCIIAndGBK = 3,
+}
+
+// +CTTS: <number>
+#[derive(Debug, Clone, AtatResp, PartialEq, Default)]
+pub struct TextToSpeechURC {
+    pub status: TextToSpeechStatus,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum TextToSpeechStatus {
+    #[default]
+    Idle = 0,
+    Play = 1,
+}
+
+// 17.2.2 AT+CTTSPARAM Set Parameters of the TTS Playing
+// AT+CTTSPARAM=<volume>,<mode>,<pitch>,<speed>,[<channel>]
+#[derive(Clone, Debug, Format, AtatCmd)]
+#[at_cmd("+CTTS", NoResponse)]
+pub struct AtTextToSpeechParamWrite {
+    pub volume: u8, // 0-100, default 50
+    pub mode: TextToSpeechMode,
+    pub pitch: u8, // 1-100, default 50
+    pub speed: u8, // 1-100, default 50
+    pub channel: Option<TextToSpeechChannel>,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum TextToSpeechMode {
+    #[default]
+    AutoReadDigitNumberRule = 0,
+    AutoReadDigitTelegramRule = 1,
+    ReadDigitTelegramRule = 2,
+    ReadDigitNumberRule = 3,
+}
+
+#[derive(Debug, Default, Format, Clone, PartialEq, AtatEnum)]
+pub enum TextToSpeechChannel {
+    #[default]
+    Main = 0,
+    Aux = 1,
+}
+
 pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     _pico: &mut U,
@@ -266,6 +325,48 @@ pub async fn hangup_incoming_call<T: atat::asynch::AtatClient, U: crate::at::Pic
     .ok();
 }
 
+pub async fn play_text_to_speech<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    pico: &mut U,
+    message: &String<512>,
+    duration_millis: u64,
+) {
+    send_command_logged(
+        client,
+        &AtTextToSpeechParamWrite {
+            volume: 80,
+            mode: TextToSpeechMode::AutoReadDigitNumberRule,
+            pitch: 50,
+            speed: 50,
+            channel: Some(TextToSpeechChannel::Main),
+        },
+        "AtTextToSpeechParamWrite".to_string(),
+    )
+    .await
+    .ok();
+
+    send_command_logged(
+        client,
+        &AtTextToSpeechOperationWrite {
+            mode: TextToSpeechOperationMode::StartPlayUCS2,
+            text: Some(UCS2HexString {
+                text: message.clone(),
+                quoted: true,
+            }),
+        },
+        "AtTextToSpeechOperationWrite".to_string(),
+    )
+    .await
+    .ok();
+
+    {
+        info!("Sleeping {} ms", duration_millis);
+        pico.sleep(duration_millis).await;
+    }
+
+    // TODO: could wait for +CTTS: 0
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cmd_serialization_tests;
@@ -322,6 +423,20 @@ mod tests {
                 mode: MicrophoneBias::On,
             },
             "AT+CMICBIAS=1\r",
+        ),
+        test_at_text_to_speech_operation_stop: (
+            AtTextToSpeechOperationWrite {
+                mode: TextToSpeechOperationMode::StopPlaying,
+                text: None,
+            },
+            "AT+CTTS=0\r",
+        ),
+        test_at_text_to_speech_operation_play: (
+            AtTextToSpeechOperationWrite {
+                mode: TextToSpeechOperationMode::StartPlayUCS2,
+                text: Some(UCS2HexString { text: String::try_from("Hello World!").unwrap(), quoted: true }),
+            },
+            "AT+CTTS=1,\"00480065006C006C006F00200057006F0072006C00640021\"\r",
         ),
     }
 

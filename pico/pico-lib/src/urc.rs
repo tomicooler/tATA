@@ -3,6 +3,7 @@ use atat::atat_derive::AtatUrc;
 use atat::heapless_bytes::Bytes;
 
 use crate::call::ClipUrc;
+use crate::call::TextToSpeechURC;
 use crate::network::EnterPinReadResponse;
 use crate::sms::NewMessageIndicationUrc;
 
@@ -56,4 +57,6 @@ pub enum Urc {
     ClipUrc(ClipUrc),
     #[at_urc("+CMTI")]
     NewMessageIndicationUrc(NewMessageIndicationUrc),
+    #[at_urc("+CTTS")]
+    TextToSpeechURC(TextToSpeechURC),
 }
