@@ -135,7 +135,7 @@ pub struct SlowClockResponse {
 pub enum SlowClockMode {
     #[default]
     DisableSlowClock = 0,
-    EnableSlowClockByDTR = 1,
+    EnableSlowClockByDTR = 1, // GP17 pin
     // Two caveats:
     //   1. you should input some characters (at least one) to wake the module
     //   2. 100ms or more is needed between the waking characters and following AT commands
@@ -149,76 +149,83 @@ pub async fn init_network<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     client: &mut T,
     pico: &mut U,
 ) {
-    loop {
-        send_command_logged(
-            client,
-            &AtSetCommandEchoOff,
-            "AtSetCommandEchoOff".to_string(),
-        )
-        .await
-        .ok();
+    let mut registered = false;
+    while !registered {
+        loop {
+            send_command_logged(
+                client,
+                &AtSetCommandEchoOff,
+                "AtSetCommandEchoOff".to_string(),
+            )
+            .await
+            .ok();
 
-        match send_command_logged(client, &AtInit, "AtInit".to_string()).await {
-            Ok(_) => {
-                match send_command_logged(
-                    client,
-                    &AtSetPhoneFunctionalityRead,
-                    "AtSetPhoneFunctionalityRead".to_string(),
-                )
-                .await
-                {
-                    Ok(v) => {
-                        info!("  {:?}", v);
-                        if v.fun == Functionality::Full {
-                            break;
-                        } else {
+            match send_command_logged(client, &AtInit, "AtInit".to_string()).await {
+                Ok(_) => {
+                    match send_command_logged(
+                        client,
+                        &AtSetPhoneFunctionalityRead,
+                        "AtSetPhoneFunctionalityRead".to_string(),
+                    )
+                    .await
+                    {
+                        Ok(v) => {
+                            info!("  {:?}", v);
+                            if v.fun == Functionality::Full {
+                                break;
+                            } else {
+                                pico.restart_module().await;
+                            }
+                        }
+                        Err(_) => {
                             pico.restart_module().await;
                         }
                     }
-                    Err(_) => {
-                        pico.restart_module().await;
-                    }
+                }
+                Err(_) => {
+                    pico.restart_module().await;
                 }
             }
-            Err(_) => {
-                pico.restart_module().await;
-            }
         }
-    }
 
-    match send_command_logged(
-        client,
-        &AtConfigureSlowClockRead,
-        "AtConfigureSlowClockRead".to_string(),
-    )
-    .await
-    {
-        Ok(v) => {
-            info!("  {:?}", v);
-        }
-        Err(_) => (),
-    }
-
-    loop {
         match send_command_logged(
             client,
-            &AtNetworkRegistrationRead,
-            "AtNetworkRegistrationRead".to_string(),
+            &AtConfigureSlowClockRead,
+            "AtConfigureSlowClockRead".to_string(),
         )
         .await
         {
             Ok(v) => {
                 info!("  {:?}", v);
-                if v.stat == NetworkRegistrationStatus::Registered
-                    || v.stat == NetworkRegistrationStatus::RegisteredRoaming
-                {
-                    break;
-                }
             }
             Err(_) => (),
         }
-        pico.sleep(1000).await;
-        // TODO if not registered for a while restart?
+
+        for _ in 0..30 {
+            match send_command_logged(
+                client,
+                &AtNetworkRegistrationRead,
+                "AtNetworkRegistrationRead".to_string(),
+            )
+            .await
+            {
+                Ok(v) => {
+                    info!("  {:?}", v);
+                    if v.stat == NetworkRegistrationStatus::Registered
+                        || v.stat == NetworkRegistrationStatus::RegisteredRoaming
+                    {
+                        registered = true;
+                        break;
+                    }
+                }
+                Err(_) => (),
+            }
+            pico.sleep(2000).await;
+        }
+        if !registered {
+            info!("Could not register, restarting module!");
+            pico.restart_module().await;
+        }
     }
 
     match send_command_logged(client, &AtEnterPinRead, "AtEnterPinRead".to_string()).await {
@@ -472,7 +479,7 @@ mod tests {
         assert_eq!("AT+COPS?\r", client.sent_commands.get(10).unwrap());
 
         assert_eq!(1, pico.sleep_calls.len());
-        assert_eq!(1000u64, *pico.sleep_calls.get(0).unwrap());
+        assert_eq!(2000u64, *pico.sleep_calls.get(0).unwrap());
         assert_eq!(0, pico.set_led_high_calls);
         assert_eq!(0, pico.set_led_low_calls);
         assert_eq!(1, pico.restart_module_calls);

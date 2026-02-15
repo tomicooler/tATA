@@ -235,6 +235,11 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
         return loc;
     }
 
+    // Only after PDP context is activated, local IP address can be obtained by AT+CIFSR,
+    // otherwise it will respond ERROR. To see the status use AT+CIPSTATUS command.
+    // TODO: debug. I get timeout error.
+    pico.sleep(5000).await;
+
     match send_command_logged(
         client,
         &AtGetLocalIPAddressExecute,
@@ -587,10 +592,12 @@ mod tests {
             },
             loc1.unwrap()
         );
-        assert_eq!(3, pico.sleep_calls.len());
-        assert_eq!(1000, *pico.sleep_calls.get(0).unwrap());
+
+        assert_eq!(4, pico.sleep_calls.len());
+        assert_eq!(5000, *pico.sleep_calls.get(0).unwrap());
         assert_eq!(1000, *pico.sleep_calls.get(1).unwrap());
         assert_eq!(1000, *pico.sleep_calls.get(2).unwrap());
+        assert_eq!(1000, *pico.sleep_calls.get(3).unwrap());
     }
 
     // TODO test error handling

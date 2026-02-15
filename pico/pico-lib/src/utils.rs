@@ -90,29 +90,12 @@ impl From<atat::serde_at::de::Error> for AtatError {
     }
 }
 
-pub struct LogBE {
-    context: String,
-}
-
-impl LogBE {
-    pub fn new(context: String) -> Self {
-        info!("BEGIN {}", context.as_str());
-        LogBE { context: context }
-    }
-}
-
-impl Drop for LogBE {
-    fn drop(&mut self) {
-        info!("END {}", self.context.as_str());
-    }
-}
-
 pub async fn send_command_logged<T: atat::asynch::AtatClient, U: atat::AtatCmd>(
     client: &mut T,
     command: &U,
     context: String,
 ) -> Result<<U as atat::AtatCmd>::Response, atat::Error> {
-    let _l = LogBE::new(context);
+    info!("SENDING COMMAND: {}", context.as_str());
     let r = client.send(command).await;
     match r.as_ref() {
         Ok(_) => info!("  OK"), // TODO: {:?}, v ?

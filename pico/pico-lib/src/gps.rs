@@ -93,7 +93,11 @@ fn parse_gnss_navigation_information(
     response: &[u8],
 ) -> Result<GnssNavigationInformationResponse, AtatError> {
     debug!("   parse_gnss_navigation_information input: {:?}", response);
-    let text = core::str::from_utf8(&response[10..])?; // removes "AT+CGNSINF+", ends with \r\n
+    const LEN: usize = "CGNSINF+: ".len();
+    if response.len() < LEN {
+        return Err(atat::Error::Parse.into());
+    }
+    let text = core::str::from_utf8(&response[LEN..])?; // removes "AT+CGNSINF+", ends with \r\n
     let mut tokens = as_tokens(text.trim_end().to_string(), ",");
     if tokens.len() != 21 {
         return Err(atat::Error::Parse.into());
@@ -410,6 +414,8 @@ mod tests {
             atat::Error::Parse,
             cmd.parse(Ok(b"+CGNSINF: 1,1,20221212120221.123,46.7624859,18.6304591,329.218,2.20,285.8,1,,2.1,2.3,0.9,,7,f,,,51,,\r\n")).err().unwrap(),
         );
+
+        assert_eq!(atat::Error::Parse, cmd.parse(Ok(b"+CGNSI")).err().unwrap(),);
 
         assert_eq!(
             GnssNavigationInformationResponse {

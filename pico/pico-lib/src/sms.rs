@@ -190,7 +190,6 @@ pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
     .await
     .ok();
 
-    // TODO: SMSSending is not adjusted yet. Either use plain text for send and UCS2 only for receive or try it with UCS2HexString<> parameters.
     send_command_logged(
         client,
         &AtSelectTECharsetWrite {
