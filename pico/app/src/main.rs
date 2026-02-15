@@ -326,6 +326,9 @@ async fn main(spawner: Spawner) {
                     urc::Urc::EnterPinReadResponse(v) => {
                         info!("URC EnterPinReadResponse code={}", v.code);
                     }
+                    urc::Urc::TextToSpeechURC(v) => {
+                        info!("URC TextToSpeechURC status={}", v.status);
+                    }
                 },
                 pubsub::WaitResult::Lagged(b) => {
                     info!("Urc Lagged messages: {}", b);
