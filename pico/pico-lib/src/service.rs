@@ -1,12 +1,19 @@
+use core::cmp::{max, min};
+
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use atat::heapless::String;
 use defmt::info;
+use libm::pow;
 
+use crate::battery;
 use crate::call::call_number;
 use crate::location::Location;
-use crate::poro::{Protector, ProtectorHuman, ProtectorMachine, ReceiverInfo, Watcher, WatcherHuman, WatcherMachine};
-use crate::sms::{SmsStat, read_sms};
+use crate::poro::{
+    CarLocation, ParkLocation, Position, Protector, ProtectorHuman, ProtectorMachine, ReceiverInfo,
+    Watcher, WatcherHuman, WatcherMachine,
+};
+use crate::sms::{SmsStat, read_sms, send_sms};
 use crate::utils::astring_to_string;
 
 pub struct Configuration {
@@ -124,6 +131,7 @@ impl Service {
 
                 if let Some(w) = w {
                     let receiver = w.receiver.unwrap();
+                    let phone_number = astring_to_string::<30>(receiver.phone_number.as_str());
 
                     if let Some(s) = w.service {
                         self.cfg.service_enabled = s.value;
@@ -154,36 +162,66 @@ impl Service {
 
                     if let Some(r) = w.refresh {
                         if r.value {
-                            let protector = Protector{
-                                car_location: todo!(),
-                                park_location: todo!(),
-                                status: todo!(),
-                                service: todo!(),
+                            let car_location = match self.status.location.as_ref() {
+                                Some(l) => Some(CarLocation {
+                                    position: Position {
+                                        latitude: l.latitude,
+                                        longitude: l.longitude,
+                                    },
+                                    accuracy: l.accuracy as f32,
+                                    battery: self.status.battery,
+                                    timestamp: l.unix_timestamp_millis,
+                                }),
+                                None => None,
                             };
 
-                            match receiver.source {
+                            let park_location = match self.status.park_location.as_ref() {
+                                Some(l) => Some(ParkLocation {
+                                    position: Position {
+                                        latitude: l.latitude,
+                                        longitude: l.longitude,
+                                    },
+                                    accuracy: l.accuracy as f32,
+                                }),
+                                None => None,
+                            };
+
+                            let protector = Protector {
+                                car_location: car_location,
+                                park_location: park_location,
+                                status: None, // TODO
+                                service: Some(crate::poro::Service {
+                                    value: self.cfg.service_enabled,
+                                }),
+                            };
+
+                            let message = match receiver.source {
                                 crate::poro::Source::SmsHuman => {
-                                    let p = ProtectorHuman{};
-                                    p.dump(&protector);
-                                },
+                                    let p = ProtectorHuman {};
+                                    p.dump(&protector)
+                                }
                                 crate::poro::Source::SmsMachine => {
-                                    let p = ProtectorMachine{};
-                                    p.dump(&protector);
-                                },
-                                _ => (),
+                                    let p = ProtectorMachine {};
+                                    p.dump(&protector)
+                                }
+                                _ => "".to_string(),
+                            };
+
+                            if message.len() > 0 {
+                                send_sms(
+                                    client,
+                                    pico,
+                                    &phone_number,
+                                    &astring_to_string::<160>(message.as_str()),
+                                )
+                                .await
                             }
                         }
                     }
 
                     if let Some(c) = w.call {
                         if c.value {
-                            call_number(
-                                client,
-                                pico,
-                                &astring_to_string::<30>(receiver.phone_number.as_str()),
-                                300_000,
-                            )
-                            .await;
+                            call_number(client, pico, &phone_number, 300_000).await;
                         }
                     }
                 }
@@ -191,12 +229,44 @@ impl Service {
         }
     }
 
+    pub async fn update_battery<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+        &mut self,
+        client: &mut T,
+        pico: &mut U,
+    ) {
+        info!("Service: trying to update battery");
+        if let Some(b) = battery::get_battery(client, pico).await {
+            self.status.battery = max(0u8, min(100u8, b.bcl)) as f32 / 100.0f32;
+            info!("Service: battery updated {}", self.status.battery);
+        }
+    }
 
     pub async fn refresh<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
         &mut self,
         client: &mut T,
         pico: &mut U,
     ) {
-        gps::get_gps_location(client, pico);
+        info!("Service: trying to update location");
+        if let Some(loc) =
+            crate::gps::get_gps_location(client, pico, self.cfg.locator_poll_count).await
+        {
+            info!("GPS location received {}", loc);
+
+            let mut accuracy = loc.accuracy;
+            // TODO: do we need this? (my old android code with 68th percentile)
+            // We define accuracy as the radius of 68% confidence.
+            accuracy = accuracy / 0.68;
+            // Unfortunately locations are not reliable when the car is in a garage.
+            // This math.pow will try to reduce false alarms.
+            // 10 meters -> 15~, 100 -> 200~, 3000 -> 10000~
+            accuracy = pow(accuracy, 1.15);
+
+            self.status.location = Some(Location {
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+                accuracy: accuracy,
+                unix_timestamp_millis: loc.unix_timestamp_millis,
+            });
+        }
     }
 }

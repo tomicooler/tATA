@@ -1,6 +1,8 @@
+use alloc::string::ToString;
 use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
+use crate::utils::send_command_logged;
 use defmt::Format;
 
 // 3.2.52 AT+CBC Battery Charge
@@ -25,6 +27,17 @@ pub enum BatteryStatus {
     NotCharging = 0,
     Charging = 1,
     ChargingFinished = 2,
+}
+
+pub async fn get_battery<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    _pico: &mut U,
+) -> Option<BatteryChargeResponse> {
+    send_command_logged(
+        client,
+        &AtBatteryChargeExecute,
+        "AtBatteryChargeExecute".to_string(),
+    ).await.ok()
 }
 
 #[cfg(test)]
