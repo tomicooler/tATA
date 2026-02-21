@@ -39,6 +39,8 @@ atat = { version = "0.24.1", features = ["defmt", "heapless"] }
 static_cell = { version = "2" }
 portable-atomic = { version = "1.13.1", features = ["critical-section"] }
 
+fasttime = { version = "0.1", default-features = false }
+
 [[bin]]
 name = "tATA-pico"
 path = "src/main.rs"
