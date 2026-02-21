@@ -7,8 +7,6 @@ use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
 use atat::heapless::String;
 use defmt::info;
-use fasttime::Date;
-use fasttime::DateTime;
 
 use crate::at::NoResponse;
 use crate::hexstr::UCS2HexString;
@@ -132,6 +130,7 @@ pub enum SmsStat {
 }
 
 impl SmsStat {
+    #[allow(dead_code)]
     fn as_str(&self) -> &'static str {
         match self {
             SmsStat::ReceivedUnread => "REC UNREAD",
