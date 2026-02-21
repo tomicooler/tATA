@@ -1,8 +1,8 @@
+use crate::utils::send_command_logged;
 use alloc::string::ToString;
 use atat::atat_derive::AtatCmd;
 use atat::atat_derive::AtatEnum;
 use atat::atat_derive::AtatResp;
-use crate::utils::send_command_logged;
 use defmt::Format;
 
 // 3.2.52 AT+CBC Battery Charge
@@ -37,7 +37,9 @@ pub async fn get_battery<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
         client,
         &AtBatteryChargeExecute,
         "AtBatteryChargeExecute".to_string(),
-    ).await.ok()
+    )
+    .await
+    .ok()
 }
 
 #[cfg(test)]

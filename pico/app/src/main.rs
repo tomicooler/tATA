@@ -446,4 +446,8 @@ impl at::PicoHW for Pico<'_> {
         // received from the serial port every time when SIM868 is powered on. For details, please refer to the chapter
         // “AT+IPR” in document [1]
     }
+
+    fn uptime_millis(&mut self) -> i64 {
+        return 0; // todo rtc.
+    }
 }

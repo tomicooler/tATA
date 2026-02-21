@@ -1,5 +1,6 @@
 use core::cmp::{max, min};
 
+use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use atat::heapless::String;
@@ -53,7 +54,7 @@ pub struct DeviceStatus {
     pub location: Option<Location>,
     pub park_location: Option<Location>,
     pub battery: f32,
-    pub battery_alert: bool,
+    pub last_battery_alert: i64,
 }
 
 pub struct Service {
@@ -238,6 +239,24 @@ impl Service {
         if let Some(b) = battery::get_battery(client, pico).await {
             self.status.battery = max(0u8, min(100u8, b.bcl)) as f32 / 100.0f32;
             info!("Service: battery updated {}", self.status.battery);
+
+            const BATTERY_LOW: f32 = 0.25;
+            const THREE_HOURS: i64 = 3 * 60 * 60 * 1000;
+
+            if self.status.battery < BATTERY_LOW && self.cfg.battery_alerts {
+                let now = pico.uptime_millis();
+                if (now - self.status.last_battery_alert) > THREE_HOURS {
+                    self.status.last_battery_alert = now;
+                    let message = format!("Battery alert {:.2} %!", self.status.battery);
+                    send_sms(
+                        client,
+                        pico,
+                        &self.cfg.phone_number,
+                        &astring_to_string::<160>(&message),
+                    )
+                    .await;
+                }
+            }
         }
     }
 
@@ -247,6 +266,11 @@ impl Service {
         pico: &mut U,
     ) {
         info!("Service: trying to update location");
+
+        if (pico.uptime_millis() - self.status.last_refresh) < 300_000 {
+            return;
+        }
+
         if let Some(loc) =
             crate::gps::get_gps_location(client, pico, self.cfg.locator_poll_count).await
         {
