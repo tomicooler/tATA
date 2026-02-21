@@ -356,7 +356,7 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                     latitude: resp.latitude.unwrap(),
                     longitude: resp.longitude.unwrap(),
                     accuracy: utils::estimate_gps_accuracy(pdop),
-                    timestamp: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
+                    unix_timestamp_millis: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
                 });
             }
             Err(_) => (),
@@ -495,7 +495,7 @@ mod tests {
                 latitude: 46.7624859,
                 longitude: 18.6304591,
                 accuracy: 5.75,
-                timestamp: 1670846541123,
+                unix_timestamp_millis: 1670846541123,
             },
             loc1.unwrap()
         );

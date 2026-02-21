@@ -390,7 +390,7 @@ pub async fn get_gsm_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                     latitude: resp.latitude.unwrap_or_default(),
                     longitude: resp.longitude.unwrap_or_default(),
                     accuracy: resp.accuracy.unwrap_or_default(),
-                    timestamp: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
+                    unix_timestamp_millis: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
                 });
                 break;
             }
@@ -588,7 +588,7 @@ mod tests {
                 latitude: 46.7624859,
                 longitude: 18.6304591,
                 accuracy: 550.0,
-                timestamp: 1670846541000,
+                unix_timestamp_millis: 1670846541000,
             },
             loc1.unwrap()
         );
