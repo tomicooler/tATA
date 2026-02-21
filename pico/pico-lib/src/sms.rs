@@ -112,6 +112,47 @@ pub struct SMSMessageResponse {
     message: UCS2HexString<1024>,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Sms {
+    pub stat: SmsStat,
+    pub phone_number: String<64>,
+    pub unix_timestamp_millis: i64,
+    pub message: String<1024>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SmsStat {
+    ReceivedUnread,
+    ReceivedRead,
+    StoredUnsent,
+    StoredSent,
+    All,
+}
+
+impl SmsStat {
+    #[allow(dead_code)]
+    fn as_str(&self) -> &'static str {
+        match self {
+            SmsStat::ReceivedUnread => "REC UNREAD",
+            SmsStat::ReceivedRead => "REC READ",
+            SmsStat::StoredUnsent => "STO UNSENT",
+            SmsStat::StoredSent => "STO SENT",
+            SmsStat::All => "ALL",
+        }
+    }
+
+    fn from_str(input: &str) -> Result<SmsStat, &'static str> {
+        match input {
+            "REC UNREAD" => Ok(SmsStat::ReceivedUnread),
+            "REC READ" => Ok(SmsStat::ReceivedRead),
+            "STO UNSENT" => Ok(SmsStat::StoredUnsent),
+            "STO SENT" => Ok(SmsStat::StoredSent),
+            "ALL" => Ok(SmsStat::All),
+            _ => Err("invalid SMS stat"),
+        }
+    }
+}
+
 // 4.2.8 AT+CNMI New SMS Message Indications
 // AT+CNMI=<mode>[,<mt>[,<bm>[,<ds>[,<bfr>]]]]
 #[derive(Clone, Debug, Format, AtatCmd)]
@@ -272,6 +313,102 @@ pub async fn receive_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
             }
             Err(_) => break,
         }
+    }
+}
+
+pub async fn read_sms<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    _pico: &mut U,
+    index: u32,
+) -> Result<Sms, &'static str> {
+    match send_command_logged(
+        client,
+        &AtReadSMSMessagesWrite {
+            index: index,
+            mode: None,
+        },
+        "AtReadSMSMessagesWrite".to_string(),
+    )
+    .await
+    {
+        Ok(v) => {
+            info!(
+                "SMS RESP state={} date={} sender={} message={}",
+                v.stat, v.date_time, v.sn, v.message
+            );
+            // Time zone is given in quarters of an hour.
+            // Hungary is UTC+1 in Winter == 04
+            // Hungary is UTC+2 in Summer == 08
+            // 23/08/06,15:42:16+08
+            // 26/01/10,17:25:32+04
+            let datetime = v.date_time.as_str();
+            let offset_date_time = if datetime.len() == "26/01/10,17:25:32+04".len() {
+                let (year, rest) = datetime.split_at(2);
+                let (_, rest) = rest.split_at(1); // /
+                let (month, rest) = rest.split_at(2);
+                let (_, rest) = rest.split_at(1); // /
+                let (day, rest) = rest.split_at(2);
+                let (_, rest) = rest.split_at(1); // ,
+                let (hour, rest) = rest.split_at(2);
+                let (_, rest) = rest.split_at(1); // :
+                let (minute, rest) = rest.split_at(2);
+                let (_, rest) = rest.split_at(1); // :
+                let (second, rest) = rest.split_at(2);
+                let (sign, time_zone) = rest.split_at(1); // +/-
+
+                let mut utc_offset_seconds: i32 = time_zone.parse().unwrap_or_default();
+                utc_offset_seconds *= 15; // quarter of an hour
+                utc_offset_seconds *= 60; // to second
+                if sign == "-" {
+                    utc_offset_seconds *= -1;
+                }
+
+                let utc_offset = fasttime::UtcOffset::from_seconds(utc_offset_seconds)
+                    .unwrap_or(fasttime::UtcOffset::from_seconds(0).unwrap());
+
+                fasttime::OffsetDateTime {
+                    utc: fasttime::DateTime {
+                        date: fasttime::Date {
+                            year: 2000 + year.parse::<i32>().unwrap_or_default(),
+                            month: month.parse().unwrap_or_default(),
+                            day: day.parse().unwrap_or_default(),
+                        },
+                        time: fasttime::Time {
+                            hour: hour.parse().unwrap_or_default(),
+                            minute: minute.parse().unwrap_or_default(),
+                            second: second.parse().unwrap_or_default(),
+                            nanosecond: 0,
+                        },
+                    },
+                    offset: utc_offset,
+                }
+            } else {
+                fasttime::OffsetDateTime {
+                    utc: fasttime::DateTime {
+                        date: fasttime::Date {
+                            year: 2000,
+                            month: 1,
+                            day: 1,
+                        },
+                        time: fasttime::Time {
+                            hour: 0,
+                            minute: 0,
+                            second: 0,
+                            nanosecond: 0,
+                        },
+                    },
+                    offset: fasttime::UtcOffset::from_seconds(0).unwrap(),
+                }
+            };
+
+            Ok(Sms {
+                stat: SmsStat::from_str(&v.stat)?,
+                phone_number: v.sn.text,
+                unix_timestamp_millis: (offset_date_time.unix_timestamp_nanos() / 1_000_000) as i64,
+                message: v.message.text,
+            })
+        }
+        Err(_) => Err("could not read SMS"),
     }
 }
 
@@ -446,5 +583,86 @@ mod tests {
         assert_eq!(2, client.sent_commands.len());
         assert_eq!("AT+CMGR=1\r", client.sent_commands.get(0).unwrap());
         assert_eq!("AT+CMGR=2\r", client.sent_commands.get(1).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_read_sms() {
+        let mut client = crate::at::tests::ClientMock::default();
+
+        // winter time UTC+1 (CET)
+        client.results.push_back(Ok("+CMGR: \"REC READ\",\"002B00330036003300300031003200330034003500360037\",\"\",\"26/01/10,17:25:32+04\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035".as_bytes()));
+
+        // summer time UTC+2 (CEST)
+        client.results.push_back(Ok("+CMGR: \"REC UNREAD\",\"002B00330036003300300031003200330034003500360037\",\"\",\"23/08/06,15:42:16+08\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035".as_bytes()));
+
+        // error
+        client.results.push_back(Err(atat::InternalError::Timeout));
+
+        // wrong date
+        client.results.push_back(Ok("+CMGR: \"STO UNSENT\",\"002B00330036003300300031003200330034003500360037\",\"\",\"23/08/abc:16+08\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035".as_bytes()));
+
+        // wrong date
+        client.results.push_back(Ok("+CMGR: \"STO UNSENT\",\"002B00330036003300300031003200330034003500360037\",\"\",\"23/08/06,xx:42:16+08\"\r\n00240074004100540041002F006C006F0063006100740069006F006E002F00310032003300340035".as_bytes()));
+
+        let mut pico = crate::at::tests::PicoMock::default();
+        let sms = read_sms(&mut client, &mut pico, 5).await.unwrap();
+        assert_eq!(
+            Sms {
+                stat: SmsStat::ReceivedRead,
+                phone_number: String::try_from("+36301234567").unwrap(),
+                unix_timestamp_millis: 1768065932000, // todo off with 1 hour?
+                message: String::try_from("$tATA/location/12345").unwrap(),
+            },
+            sms
+        );
+
+        assert_eq!(1, client.sent_commands.len());
+        assert_eq!("AT+CMGR=5\r", client.sent_commands.get(0).unwrap());
+
+        let sms = read_sms(&mut client, &mut pico, 12).await.unwrap();
+        assert_eq!(
+            Sms {
+                stat: SmsStat::ReceivedUnread,
+                phone_number: String::try_from("+36301234567").unwrap(),
+                unix_timestamp_millis: 1691336536000, // todo off with 2 hour?
+                message: String::try_from("$tATA/location/12345").unwrap(),
+            },
+            sms
+        );
+
+        assert_eq!(2, client.sent_commands.len());
+        assert_eq!("AT+CMGR=12\r", client.sent_commands.get(1).unwrap());
+
+        assert_eq!(true, read_sms(&mut client, &mut pico, 20).await.is_err());
+        assert_eq!(3, client.sent_commands.len());
+        assert_eq!("AT+CMGR=20\r", client.sent_commands.get(2).unwrap());
+
+        let sms = read_sms(&mut client, &mut pico, 3).await.unwrap();
+        assert_eq!(
+            Sms {
+                stat: SmsStat::StoredUnsent,
+                phone_number: String::try_from("+36301234567").unwrap(),
+                unix_timestamp_millis: 946684800000, // defaults to 2000.01.01 00:00+00
+                message: String::try_from("$tATA/location/12345").unwrap(),
+            },
+            sms
+        );
+
+        assert_eq!(4, client.sent_commands.len());
+        assert_eq!("AT+CMGR=3\r", client.sent_commands.get(3).unwrap());
+
+        let sms = read_sms(&mut client, &mut pico, 9).await.unwrap();
+        assert_eq!(
+            Sms {
+                stat: SmsStat::StoredUnsent,
+                phone_number: String::try_from("+36301234567").unwrap(),
+                unix_timestamp_millis: 1691282536000, // fallbacks to August 6, 2023 12:42:16 AM
+                message: String::try_from("$tATA/location/12345").unwrap(),
+            },
+            sms
+        );
+
+        assert_eq!(5, client.sent_commands.len());
+        assert_eq!("AT+CMGR=9\r", client.sent_commands.get(4).unwrap());
     }
 }

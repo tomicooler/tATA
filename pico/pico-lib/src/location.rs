@@ -6,7 +6,7 @@ pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
     pub accuracy: f64,
-    pub timestamp: i64,
+    pub unix_timestamp_millis: i64,
 }
 
 // TODO how to abstract this in rust, a Locator trait Vec<dyn Locator>
