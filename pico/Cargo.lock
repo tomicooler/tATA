@@ -1587,6 +1587,7 @@ dependencies = [
  "embassy-sync 0.6.2",
  "embassy-time 0.5.0",
  "embedded-alloc",
+ "fasttime",
  "panic-probe",
  "pico-lib",
  "portable-atomic",

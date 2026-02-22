@@ -9,6 +9,7 @@ pub trait PicoHW {
     fn set_led_high(&mut self);
     fn set_led_low(&mut self);
     fn restart_module(&mut self) -> impl core::future::Future<Output = ()> + Send;
+    fn uptime_millis(&mut self) -> i64;
 }
 
 #[cfg(test)]
@@ -73,6 +74,7 @@ pub mod tests {
         pub set_led_high_calls: u32,
         pub set_led_low_calls: u32,
         pub restart_module_calls: u32,
+        pub uptime_millis: i64,
     }
 
     impl PicoHW for PicoMock {
@@ -90,6 +92,10 @@ pub mod tests {
 
         async fn restart_module(&mut self) {
             self.restart_module_calls += 1;
+        }
+
+        fn uptime_millis(&mut self) -> i64 {
+            return self.uptime_millis;
         }
     }
 }
