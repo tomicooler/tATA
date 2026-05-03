@@ -380,8 +380,7 @@ pub async fn get_gps_unix_timestamp_millis<T: atat::asynch::AtatClient, U: crate
         .await
         {
             Ok(resp) => {
-                if resp.utc_date_time.is_none()
-                {
+                if resp.utc_date_time.is_none() {
                     continue;
                 }
 

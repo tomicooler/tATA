@@ -147,19 +147,19 @@ async fn main(spawner: Spawner) {
         .schedule_alarm(DateTimeFilter::default().second(30));
 
     loop {
-        match select(
-            pico.rtc.wait_for_alarm(),
-            sub.next_message(),
-        )
-        .await
-        {
+        match select(pico.rtc.wait_for_alarm(), sub.next_message()).await {
             // Alarm triggered
             Either::First(_) => {
                 pico.set_led_high();
                 let dt = pico.rtc.now().unwrap();
                 info!(
                     "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
                     adc.read(&mut p26).await.unwrap(),
                     convert_to_celsius(adc.read(&mut ts).await.unwrap())
                 );
@@ -177,7 +177,12 @@ async fn main(spawner: Spawner) {
                 let dt = pico.rtc.now().unwrap();
                 info!(
                     "URC! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
                     adc.read(&mut p26).await.unwrap(),
                     convert_to_celsius(adc.read(&mut ts).await.unwrap())
                 );
@@ -200,7 +205,7 @@ async fn main(spawner: Spawner) {
                     }
                 }
                 pico.set_led_low();
-            },
+            }
         }
     }
 }
@@ -337,10 +342,11 @@ impl at::PicoHW for Pico<'_> {
     }
 
     fn set_rtc_time(&mut self, millis: i64) {
-        self.rtc.set_datetime(millis_to_datetime(millis as u64).unwrap()).unwrap();
+        self.rtc
+            .set_datetime(millis_to_datetime(millis as u64).unwrap())
+            .unwrap();
     }
 }
-
 
 // NOTE: This is copied from https://github.com/embassy-rs/embassy/blob/main/embassy-rp/src/datetime/epoch.rs
 // TODO: update embassy-rp 0.9 -> 0.10
@@ -367,7 +373,6 @@ fn days_in_month(year: u16, month: u8) -> u8 {
 fn day_of_week_from_days(days_since_epoch: u32) -> u8 {
     ((days_since_epoch + EPOCH_DAY_OF_WEEK as u32) % 7) as u8
 }
-
 
 fn millis_to_datetime(millis: u64) -> Result<DateTime, &'static str> {
     // Use u64 for initial division, then cast to u32 for subsequent calculations
