@@ -8,6 +8,8 @@ use alloc::collections::vec_deque::VecDeque;
 use alloc::string::String;
 use libm::{asin, cos, pow, sin, sqrt};
 
+use crate::location::Location;
+
 // https://stackoverflow.com/questions/27928/calculate-distance-between-two-latitude-longitude-points-haversine-formula
 pub fn get_distance_in_meters(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let earth_radius_in_meters = 6371000f64;
@@ -18,6 +20,11 @@ pub fn get_distance_in_meters(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64
         + pow(sin(d_lon / 2.0f64), 2f64) * cos(lat1.to_radians()) * cos(lat2.to_radians());
     let c = 2.0f64 * asin(sqrt(a));
     return earth_radius_in_meters * c;
+}
+
+pub fn is_distance_big_enough(l1: &Location, l2: &Location) -> bool {
+    return get_distance_in_meters(l1.latitude, l1.longitude, l2.latitude, l2.longitude)
+        > (l1.accuracy + l2.accuracy);
 }
 
 // https://gis.stackexchange.com/questions/111004/translating-hdop-pdop-and-vdop-to-metric-accuracy-from-given-nmea-strings

@@ -1,32 +1,30 @@
 #![no_std]
 #![no_main]
 
-use alloc::string::ToString;
 use atat::asynch::Client;
 use atat::heapless::String;
 use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::{Either3, select3};
+use embassy_futures::select::{Either, select};
 use embassy_rp::adc::{Adc, Channel, Config, InterruptHandler as AdcInterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output, Pull};
-use embassy_rp::peripherals::UART0;
+use embassy_rp::peripherals::{RTC, UART0};
 use embassy_rp::rtc::{DateTime, DateTimeFilter, DayOfWeek, Rtc};
 use embassy_rp::uart::{self, BufferedInterruptHandler, BufferedUart, BufferedUartRx};
 use embassy_sync::pubsub;
 use embassy_time::{Duration, Timer};
 use embedded_alloc::LlffHeap as Heap;
+use pico_lib::service::{Configuration, DeviceStatus, Service};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 use embassy_rp::watchdog::Watchdog;
+use pico_lib::at;
 use pico_lib::at::PicoHW;
-use pico_lib::poro;
 use pico_lib::urc;
-use pico_lib::utils::{astring_to_string, send_command_logged};
-use pico_lib::{at, battery, call, gps, gsm, network, sms};
 
 extern crate alloc;
 
@@ -53,23 +51,7 @@ async fn main(spawner: Spawner) {
         unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
     }
     let p = embassy_rp::init(Default::default());
-    let mut rtc = Rtc::new(p.RTC, Irqs);
 
-    if !rtc.is_running() {
-        let now = DateTime {
-            year: 2000,
-            month: 1,
-            day: 1,
-            day_of_week: DayOfWeek::Saturday,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        };
-        rtc.set_datetime(now).unwrap();
-        // The rp2040 chip will always add a Feb 29th on every year that is divisible by 4,
-        // but this may be incorrect (e.g. on century years)
-        rtc.set_leap_year_check(false);
-    }
     Timer::after(Duration::from_secs(2)).await;
     info!("STARTED");
 
@@ -79,31 +61,24 @@ async fn main(spawner: Spawner) {
     let mut pico = Pico {
         led: Output::new(p.PIN_25, Level::Low),
         power: Output::new(p.PIN_14, Level::Low),
+        rtc: Rtc::new(p.RTC, Irqs),
     };
 
-    // This is just a Test will be removed later.
-    let pm = poro::ProtectorMachine {};
-    let dumped = pm.dump(&poro::Protector {
-        car_location: Some(poro::CarLocation {
-            position: poro::Position {
-                latitude: 46.7624859f64,
-                longitude: 18.6304591f64,
-            },
-            accuracy: 250.25f32,
-            battery: 0.8912f32,
-            timestamp: 1670077542109i64,
-        }),
-        park_location: Some(poro::ParkLocation {
-            position: poro::Position {
-                latitude: 47.1258945f64,
-                longitude: 17.8372091f64,
-            },
-            accuracy: 500.25f32,
-        }),
-        status: Some(poro::Status::CarTheftDetected),
-        service: Some(poro::Service { value: true }),
-    });
-    info!("PORO TEST: {}", dumped.as_str());
+    if !pico.rtc.is_running() {
+        let now = DateTime {
+            year: 2000,
+            month: 1,
+            day: 1,
+            day_of_week: DayOfWeek::Saturday,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        };
+        pico.rtc.set_datetime(now).unwrap();
+        // The rp2040 chip will always add a Feb 29th on every year that is divisible by 4,
+        // but this may be incorrect (e.g. on century years)
+        pico.rtc.set_leap_year_check(false);
+    }
 
     let mut adc = Adc::new(p.ADC, Irqs, Config::default());
     let mut p26 = Channel::new_pin(p.PIN_26, Pull::None);
@@ -141,196 +116,96 @@ async fn main(spawner: Spawner) {
         atat::Config::default(),
     );
 
-    Timer::after(Duration::from_millis(500)).await;
-    info!("Before spawning reader Task");
-
     spawner.spawn(ingress_task(ingress, reader)).unwrap();
-
-    Timer::after(Duration::from_millis(500)).await;
-    info!("After spawning reader Task");
 
     let mut sub = URC_CHANNEL.subscribe().unwrap();
 
-    info!("Network init");
-    Timer::after(Duration::from_secs(2)).await;
+    let mut service = Service {
+        cfg: Configuration {
+            phone_number: String::try_from("+36301234567").unwrap(),
+            sms_password: String::try_from("12345").unwrap(),
+            service_enabled: true,
+            locator_poll_count: 10,
+            check_period_seconds: 15 * 60,
+            call_after_boot: true,
+            debug_alerts: true,
+            battery_alerts: true,
+            detect_parking: true,
+            keep_n_sms: 20,
+        },
+        status: DeviceStatus {
+            last_big_location_change: 0,
+            location: None,
+            park_location: None,
+            battery: 100.0f32,
+            last_battery_alert: 0,
+        },
+    };
 
-    network::init_network(&mut client, &mut pico).await;
-    sms::init(&mut client, &mut pico).await;
-    call::init(&mut client, &mut pico).await;
-
-    for _ in 0..30 {
-        pico.set_led_high();
-        Timer::after(Duration::from_millis(100)).await;
-        pico.set_led_low();
-        Timer::after(Duration::from_millis(100)).await;
-    }
-
-    match gps::get_gps_location(&mut client, &mut pico, 5).await {
-        Some(v) => info!("GPS location: {:?}", v),
-        None => (),
-    }
-
-    match gsm::get_gsm_location(&mut client, &mut pico, 5, "online").await {
-        Some(v) => info!("GSM location: {:?}", v),
-        None => (),
-    }
-
-    let phone_number: String<30> = String::try_from("+36301234567").unwrap();
-
-    call::call_number(
-        &mut client,
-        &mut pico,
-        &phone_number,
-        Duration::from_secs(10).as_millis(),
-    )
-    .await;
-
-    let mut tata_response: String<160> = String::try_from("$tATA/").unwrap();
-    let _ = tata_response.push_str(dumped.as_str());
-
-    sms::send_sms(
-        &mut client,
-        &mut pico,
-        &phone_number,
-        &astring_to_string(tata_response.as_str()),
-    )
-    .await;
-
-    sms::receive_sms(&mut client, &mut pico).await;
-
-    let mut counter = 0u64;
-    rtc.schedule_alarm(DateTimeFilter::default().second(30));
+    service.init(&mut client, &mut pico).await;
+    pico.rtc
+        .schedule_alarm(DateTimeFilter::default().second(30));
 
     loop {
-        // Wait for 5 seconds or until the alarm is triggered
-        match select3(
-            Timer::after_secs(4),
-            rtc.wait_for_alarm(),
-            sub.next_message(),
-        )
-        .await
-        {
-            // Timer expired
-            Either3::First(_) => {
-                pico.set_led_high();
-                Timer::after(Duration::from_millis(500)).await;
-                let dt = rtc.now().unwrap();
-                info!(
-                    "Now: {}-{:02}-{:02} {}:{:02}:{:02}",
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
-                );
-
-                counter += 1;
-                let level = adc.read(&mut p26).await.unwrap();
-                let temp = convert_to_celsius(adc.read(&mut ts).await.unwrap());
-                info!(
-                    "Tick counter: {} Pin 26 ADC: {} Temp: {}",
-                    counter, level, temp
-                );
-
-                pico.set_led_low();
-                Timer::after(Duration::from_millis(500)).await;
-            }
+        match select(pico.rtc.wait_for_alarm(), sub.next_message()).await {
             // Alarm triggered
-            Either3::Second(_) => {
-                let dt = rtc.now().unwrap();
+            Either::First(_) => {
+                pico.set_led_high();
+                let dt = pico.rtc.now().unwrap();
                 info!(
-                    "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02}",
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                    "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
+                    adc.read(&mut p26).await.unwrap(),
+                    convert_to_celsius(adc.read(&mut ts).await.unwrap())
                 );
-                rtc.schedule_alarm(DateTimeFilter::default().second(30));
 
-                match gps::get_gps_location(&mut client, &mut pico, 5).await {
-                    Some(v) => info!("GPS location: {:?}", v),
-                    None => (),
-                }
+                service.refresh(&mut client, &mut pico).await;
 
-                match send_command_logged(
-                    &mut client,
-                    &battery::AtBatteryChargeExecute,
-                    "AtBatteryChargeExecute".to_string(),
-                )
-                .await
-                {
-                    Ok(v) => info!("  {:?}", v),
-                    Err(_) => (),
-                }
+                // every 10 minute, todo..
+                pico.rtc
+                    .schedule_alarm(DateTimeFilter::default().minute((dt.minute + 10) % 60));
+                pico.set_led_low();
             }
-            Either3::Third(m) => match &m {
-                pubsub::WaitResult::Message(u) => match u {
-                    urc::Urc::CallReady => {
-                        info!("URC CallReady");
-                    }
-                    urc::Urc::SMSReady => {
-                        info!("URC SMSReady");
-                    }
-                    urc::Urc::SetBearer(_v) => {
-                        info!("URC SetBearer");
-                    }
-                    urc::Urc::GprsDisconnected(_v) => {
-                        info!("URC GprsDisconnected");
-                    }
-                    urc::Urc::Ring => {
-                        info!("URC Ring");
-                    }
-                    urc::Urc::NormalPowerDown => {
-                        info!("URC NormalPowerDown");
-                    }
-                    urc::Urc::UnderVoltagePowerDown => {
-                        info!("URC UnderVoltagePowerDown");
-                    }
-                    urc::Urc::UnderVoltageWarning => {
-                        info!("URC UnderVoltageWarning");
-                    }
-                    urc::Urc::OverVoltagePowerDown => {
-                        info!("URC OverVoltagePowerDown");
-                    }
-                    urc::Urc::OverVoltageWarning => {
-                        info!("URC OverVoltageWarning");
-                    }
-                    urc::Urc::ChargeOnlyMode => {
-                        info!("URC ChargeOnlyMode");
-                        call::call_number(
-                            &mut client,
-                            &mut pico,
-                            &phone_number,
-                            Duration::from_secs(10).as_millis(),
-                        )
-                        .await;
-                    }
-                    urc::Urc::Ready => {
-                        info!("URC Ready");
-                    }
-                    urc::Urc::ConnectOK1 => {
-                        info!("URC ConnectOK1");
-                    }
-                    urc::Urc::ConnectOK => {
-                        info!("URC ConnectOK");
-                    }
-                    urc::Urc::ClipUrc(v) => {
-                        info!("URC ClipUrc number={}, type={}", v.number.as_str(), v.type_);
-                        if v.number == phone_number {
-                            Timer::after_millis(2000).await;
-                            call::answer_incoming_call(&mut client, &mut pico).await;
-                        } else {
-                            call::hangup_incoming_call(&mut client, &mut pico).await;
+            // Unsolicited Message
+            Either::Second(m) => {
+                pico.set_led_high();
+                let dt = pico.rtc.now().unwrap();
+                info!(
+                    "URC! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
+                    adc.read(&mut p26).await.unwrap(),
+                    convert_to_celsius(adc.read(&mut ts).await.unwrap())
+                );
+                match &m {
+                    pubsub::WaitResult::Message(u) => match u {
+                        urc::Urc::ClipUrc(v) => {
+                            service
+                                .handle_incoming_call(&mut client, &mut pico, &v.number)
+                                .await;
                         }
+                        urc::Urc::NewMessageIndicationUrc(v) => {
+                            service
+                                .handle_sms(&mut client, &mut pico, v.index as u32)
+                                .await;
+                        }
+                        _ => (),
+                    },
+                    pubsub::WaitResult::Lagged(b) => {
+                        info!("Urc Lagged messages: {}", b);
                     }
-                    urc::Urc::NewMessageIndicationUrc(v) => {
-                        info!(
-                            "URC NewMessageIndicationUrc index={} mem={}",
-                            v.index,
-                            v.mem.as_str()
-                        );
-                    }
-                    urc::Urc::EnterPinReadResponse(v) => {
-                        info!("URC EnterPinReadResponse code={}", v.code);
-                    }
-                },
-                pubsub::WaitResult::Lagged(b) => {
-                    info!("Urc Lagged messages: {}", b);
                 }
-            },
+                pico.set_led_low();
+            }
         }
     }
 }
@@ -373,6 +248,7 @@ fn convert_to_celsius(raw_temp: u16) -> f32 {
 struct Pico<'a> {
     led: Output<'a>,
     power: Output<'a>,
+    rtc: Rtc<'a, RTC>,
 }
 
 impl at::PicoHW for Pico<'_> {
@@ -446,4 +322,115 @@ impl at::PicoHW for Pico<'_> {
         // received from the serial port every time when SIM868 is powered on. For details, please refer to the chapter
         // “AT+IPR” in document [1]
     }
+
+    fn rtc_now_millis(&mut self) -> i64 {
+        let dt = self.rtc.now().unwrap();
+        let now = fasttime::DateTime {
+            date: fasttime::Date {
+                year: dt.year as i32,
+                month: dt.month,
+                day: dt.day,
+            },
+            time: fasttime::Time {
+                hour: dt.hour,
+                minute: dt.minute,
+                second: dt.second,
+                nanosecond: 0,
+            },
+        };
+        return (now.unix_timestamp_nanos() / 1_000_000) as i64;
+    }
+
+    fn set_rtc_time(&mut self, millis: i64) {
+        self.rtc
+            .set_datetime(millis_to_datetime(millis as u64).unwrap())
+            .unwrap();
+    }
+}
+
+// NOTE: This is copied from https://github.com/embassy-rs/embassy/blob/main/embassy-rp/src/datetime/epoch.rs
+// TODO: update embassy-rp 0.9 -> 0.10
+const EPOCH_YEAR: u16 = 1970;
+const DAYS_IN_MONTH: [u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MS_PER_SECOND: u64 = 1000;
+const MS_PER_MINUTE: u64 = 60 * MS_PER_SECOND;
+const MS_PER_HOUR: u64 = 60 * MS_PER_MINUTE;
+const MS_PER_DAY: u64 = 24 * MS_PER_HOUR;
+const EPOCH_DAY_OF_WEEK: u8 = 4; // Thursday
+
+const fn is_leap_year(year: u16) -> bool {
+    (year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))
+}
+
+fn days_in_month(year: u16, month: u8) -> u8 {
+    if month == 2 && is_leap_year(year) {
+        29
+    } else {
+        DAYS_IN_MONTH[(month - 1) as usize]
+    }
+}
+
+fn day_of_week_from_days(days_since_epoch: u32) -> u8 {
+    ((days_since_epoch + EPOCH_DAY_OF_WEEK as u32) % 7) as u8
+}
+
+fn millis_to_datetime(millis: u64) -> Result<DateTime, &'static str> {
+    // Use u64 for initial division, then cast to u32 for subsequent calculations
+    // Max total_days for year 4095 is ~776,000, fits in u32
+    let total_days = (millis / MS_PER_DAY) as u32;
+    // remaining_ms is at most MS_PER_DAY - 1 = 86,399,999, fits in u32
+    let remaining_ms = (millis % MS_PER_DAY) as u32;
+
+    let hour = (remaining_ms / MS_PER_HOUR as u32) as u8;
+    let remaining_ms = remaining_ms % MS_PER_HOUR as u32;
+    let minute = (remaining_ms / MS_PER_MINUTE as u32) as u8;
+    let second = ((remaining_ms % MS_PER_MINUTE as u32) / MS_PER_SECOND as u32) as u8;
+
+    let day_of_week = match day_of_week_from_days(total_days) {
+        0 => DayOfWeek::Sunday,
+        1 => DayOfWeek::Monday,
+        2 => DayOfWeek::Tuesday,
+        3 => DayOfWeek::Wednesday,
+        4 => DayOfWeek::Thursday,
+        5 => DayOfWeek::Friday,
+        6 => DayOfWeek::Saturday,
+        _ => defmt::panic!(),
+    };
+
+    let mut year = EPOCH_YEAR;
+    let mut days_remaining = total_days;
+
+    loop {
+        let days_in_year: u32 = if is_leap_year(year) { 366 } else { 365 };
+        if days_remaining < days_in_year {
+            break;
+        }
+        days_remaining -= days_in_year;
+        year += 1;
+
+        if year > 4095 {
+            return Err("InvalidTimestamp");
+        }
+    }
+
+    let mut month = 1u8;
+    while month <= 12 {
+        let days_in_this_month = days_in_month(year, month) as u32;
+        if days_remaining < days_in_this_month {
+            break;
+        }
+        days_remaining -= days_in_this_month;
+        month += 1;
+    }
+    let day = (days_remaining + 1) as u8;
+
+    Ok(DateTime {
+        year,
+        month,
+        day,
+        day_of_week,
+        hour,
+        minute,
+        second,
+    })
 }

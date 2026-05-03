@@ -145,10 +145,7 @@ pub enum SlowClockMode {
 #[cfg(test)]
 extern crate std;
 
-pub async fn init_network<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
-    client: &mut T,
-    pico: &mut U,
-) {
+pub async fn init<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(client: &mut T, pico: &mut U) {
     let mut registered = false;
     while !registered {
         loop {
@@ -464,7 +461,7 @@ mod tests {
             .push_back(Ok("0,0,\"PANNON GSM\"".as_bytes())); // AT+COPS
 
         let mut pico = crate::at::tests::PicoMock::default();
-        init_network(&mut client, &mut pico).await;
+        init(&mut client, &mut pico).await;
         assert_eq!(11, client.sent_commands.len());
         assert_eq!("ATE0\r", client.sent_commands.get(0).unwrap());
         assert_eq!("AT\r", client.sent_commands.get(1).unwrap());

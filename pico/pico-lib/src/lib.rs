@@ -11,6 +11,7 @@ pub mod hexstr;
 pub mod location;
 pub mod network;
 pub mod poro;
+pub mod service;
 pub mod sms;
 pub mod urc;
 pub mod utils;
