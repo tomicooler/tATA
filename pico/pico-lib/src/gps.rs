@@ -384,17 +384,20 @@ pub async fn get_gps_unix_timestamp_millis<T: atat::asynch::AtatClient, U: crate
                     continue;
                 }
 
-                send_command_logged(
-                    client,
-                    &AtGnssPowerControlWrite {
-                        mode: PowerMode::TurnOff,
-                    },
-                    "AtGnssPowerControlWrite OFF".to_string(),
-                )
-                .await
-                .ok();
-
-                return get_unix_timestamp_millis(resp.utc_date_time.unwrap());
+                let now = get_unix_timestamp_millis(resp.utc_date_time.unwrap());
+                if now > 1767247200000 {
+                    // 2026.01.01 06:00
+                    send_command_logged(
+                        client,
+                        &AtGnssPowerControlWrite {
+                            mode: PowerMode::TurnOff,
+                        },
+                        "AtGnssPowerControlWrite OFF".to_string(),
+                    )
+                    .await
+                    .ok();
+                    return now;
+                }
             }
             Err(_) => (),
         }
