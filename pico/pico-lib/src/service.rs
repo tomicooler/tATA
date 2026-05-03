@@ -103,8 +103,14 @@ impl Service {
         call::init(client, pico).await;
         info!("Service: init sms");
         sms::init(client, pico).await;
-        info!("Service: init time");
-        //time::init
+        info!("Service: init rtc time");
+        let now = gps::get_gps_unix_timestamp_millis(client, pico, 30).await;
+        if now > 0 {
+            pico.set_rtc_time(now);
+            info!("Service: init rtc time succeeded");
+        } else {
+            info!("Service: init rtc time failed");
+        }
 
         // 10x short flash after init
         for _ in 0..10 {
@@ -267,9 +273,8 @@ impl Service {
             const BATTERY_LOW: f32 = 0.25;
             const THREE_HOURS: i64 = 3 * 60 * 60 * 1000;
 
-            // TODO: instead of uptime we need proper rtc time
             if self.status.battery < BATTERY_LOW && self.cfg.battery_alerts {
-                let now = pico.uptime_millis();
+                let now = pico.rtc_now_millis();
                 if (now - self.status.last_battery_alert) > THREE_HOURS {
                     self.status.last_battery_alert = now;
                     let message = format!("Battery alert {:.2} %!", self.status.battery);
@@ -300,6 +305,10 @@ impl Service {
         let mut new_location = new_location.unwrap();
 
         info!("GPS location received {}", new_location);
+
+        if (new_location.unix_timestamp_millis - pico.rtc_now_millis()).abs() > 60_000 {
+            pico.set_rtc_time(new_location.unix_timestamp_millis);
+        }
 
         let mut accuracy = new_location.accuracy;
         // TODO: do we need this? (my old android code with 68th percentile)

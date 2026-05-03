@@ -318,29 +318,6 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                     continue;
                 }
 
-                let datetime = bytes_to_string(&resp.utc_date_time.unwrap());
-                let (year, rest) = datetime.as_str().split_at(4);
-                let (month, rest) = rest.split_at(2);
-                let (day, rest) = rest.split_at(2);
-                let (hour, rest) = rest.split_at(2);
-                let (minute, rest) = rest.split_at(2);
-                let (second, rest) = rest.split_at(2);
-                let (_, millis) = rest.split_at(1);
-
-                let datetime = DateTime {
-                    date: Date {
-                        year: year.parse().unwrap_or_default(),
-                        month: month.parse().unwrap_or_default(),
-                        day: day.parse().unwrap_or_default(),
-                    },
-                    time: fasttime::Time {
-                        hour: hour.parse().unwrap_or_default(),
-                        minute: minute.parse().unwrap_or_default(),
-                        second: second.parse().unwrap_or_default(),
-                        nanosecond: millis.parse::<u32>().unwrap_or_default() * 1_000_000u32,
-                    },
-                };
-
                 send_command_logged(
                     client,
                     &AtGnssPowerControlWrite {
@@ -356,7 +333,7 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
                     latitude: resp.latitude.unwrap(),
                     longitude: resp.longitude.unwrap(),
                     accuracy: utils::estimate_gps_accuracy(pdop),
-                    unix_timestamp_millis: (datetime.unix_timestamp_nanos() / 1_000_000) as i64,
+                    unix_timestamp_millis: get_unix_timestamp_millis(resp.utc_date_time.unwrap()),
                 });
             }
             Err(_) => (),
@@ -374,6 +351,93 @@ pub async fn get_gps_location<T: atat::asynch::AtatClient, U: crate::at::PicoHW>
     .ok();
 
     return None;
+}
+
+pub async fn get_gps_unix_timestamp_millis<T: atat::asynch::AtatClient, U: crate::at::PicoHW>(
+    client: &mut T,
+    pico: &mut U,
+    max_retries: u8,
+) -> i64 {
+    send_command_logged(
+        client,
+        &AtGnssPowerControlWrite {
+            mode: PowerMode::TurnOn,
+        },
+        "AtGnssPowerControlWrite ON".to_string(),
+    )
+    .await
+    .ok();
+
+    // TODO defer { AtGnssPowerControlWrite::TurnOff }; would be better
+
+    for i in 0..max_retries {
+        pico.sleep(1000).await;
+        match send_command_logged(
+            client,
+            &AtGnssNavigationInformationExecute,
+            format!("AtGnssNavigationInformationExecute {}", i),
+        )
+        .await
+        {
+            Ok(resp) => {
+                if resp.utc_date_time.is_none()
+                {
+                    continue;
+                }
+
+                send_command_logged(
+                    client,
+                    &AtGnssPowerControlWrite {
+                        mode: PowerMode::TurnOff,
+                    },
+                    "AtGnssPowerControlWrite OFF".to_string(),
+                )
+                .await
+                .ok();
+
+                return get_unix_timestamp_millis(resp.utc_date_time.unwrap());
+            }
+            Err(_) => (),
+        }
+    }
+
+    send_command_logged(
+        client,
+        &AtGnssPowerControlWrite {
+            mode: PowerMode::TurnOff,
+        },
+        "AtGnssPowerControlWrite OFF".to_string(),
+    )
+    .await
+    .ok();
+
+    return -1;
+}
+
+fn get_unix_timestamp_millis(utc_date_time: Bytes<18>) -> i64 {
+    let datetime = bytes_to_string(&utc_date_time);
+    let (year, rest) = datetime.as_str().split_at(4);
+    let (month, rest) = rest.split_at(2);
+    let (day, rest) = rest.split_at(2);
+    let (hour, rest) = rest.split_at(2);
+    let (minute, rest) = rest.split_at(2);
+    let (second, rest) = rest.split_at(2);
+    let (_, millis) = rest.split_at(1);
+
+    let datetime = DateTime {
+        date: Date {
+            year: year.parse().unwrap_or_default(),
+            month: month.parse().unwrap_or_default(),
+            day: day.parse().unwrap_or_default(),
+        },
+        time: fasttime::Time {
+            hour: hour.parse().unwrap_or_default(),
+            minute: minute.parse().unwrap_or_default(),
+            second: second.parse().unwrap_or_default(),
+            nanosecond: millis.parse::<u32>().unwrap_or_default() * 1_000_000u32,
+        },
+    };
+    return (datetime.unix_timestamp_nanos() / 1_000_000) as i64;
 }
 
 #[cfg(test)]

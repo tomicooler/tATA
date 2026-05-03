@@ -7,7 +7,7 @@ use atat::{AtatIngress, DefaultDigester, Ingress, ResponseSlot, UrcChannel};
 use core::ptr::addr_of_mut;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::{Either3, select3};
+use embassy_futures::select::{Either, select};
 use embassy_rp::adc::{Adc, Channel, Config, InterruptHandler as AdcInterruptHandler};
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output, Pull};
@@ -143,46 +143,25 @@ async fn main(spawner: Spawner) {
     };
 
     service.init(&mut client, &mut pico).await;
-
-    let mut counter = 0u64;
     pico.rtc
         .schedule_alarm(DateTimeFilter::default().second(30));
 
     loop {
-        match select3(
-            Timer::after_secs(30),
+        match select(
             pico.rtc.wait_for_alarm(),
             sub.next_message(),
         )
         .await
         {
-            // Timer expired
-            Either3::First(_) => {
-                pico.set_led_high();
-                Timer::after(Duration::from_millis(500)).await;
-                let dt = pico.rtc.now().unwrap();
-                info!(
-                    "Now: {}-{:02}-{:02} {}:{:02}:{:02}",
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
-                );
-
-                counter += 1;
-                let level = adc.read(&mut p26).await.unwrap();
-                let temp = convert_to_celsius(adc.read(&mut ts).await.unwrap());
-                info!(
-                    "Tick counter: {} Pin 26 ADC: {} Temp: {}",
-                    counter, level, temp
-                );
-
-                pico.set_led_low();
-                Timer::after(Duration::from_millis(500)).await;
-            }
             // Alarm triggered
-            Either3::Second(_) => {
+            Either::First(_) => {
+                pico.set_led_high();
                 let dt = pico.rtc.now().unwrap();
                 info!(
-                    "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02}",
+                    "ALARM TRIGGERED! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
                     dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                    adc.read(&mut p26).await.unwrap(),
+                    convert_to_celsius(adc.read(&mut ts).await.unwrap())
                 );
 
                 service.refresh(&mut client, &mut pico).await;
@@ -190,25 +169,37 @@ async fn main(spawner: Spawner) {
                 // every 10 minute, todo..
                 pico.rtc
                     .schedule_alarm(DateTimeFilter::default().minute((dt.minute + 10) % 60));
+                pico.set_led_low();
             }
             // Unsolicited Message
-            Either3::Third(m) => match &m {
-                pubsub::WaitResult::Message(u) => match u {
-                    urc::Urc::ClipUrc(v) => {
-                        service
-                            .handle_incoming_call(&mut client, &mut pico, &v.number)
-                            .await;
+            Either::Second(m) => {
+                pico.set_led_high();
+                let dt = pico.rtc.now().unwrap();
+                info!(
+                    "URC! Now: {}-{:02}-{:02} {}:{:02}:{:02} Pin26 ADC: {} Temperature: {}",
+                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+                    adc.read(&mut p26).await.unwrap(),
+                    convert_to_celsius(adc.read(&mut ts).await.unwrap())
+                );
+                match &m {
+                    pubsub::WaitResult::Message(u) => match u {
+                        urc::Urc::ClipUrc(v) => {
+                            service
+                                .handle_incoming_call(&mut client, &mut pico, &v.number)
+                                .await;
+                        }
+                        urc::Urc::NewMessageIndicationUrc(v) => {
+                            service
+                                .handle_sms(&mut client, &mut pico, v.index as u32)
+                                .await;
+                        }
+                        _ => (),
+                    },
+                    pubsub::WaitResult::Lagged(b) => {
+                        info!("Urc Lagged messages: {}", b);
                     }
-                    urc::Urc::NewMessageIndicationUrc(v) => {
-                        service
-                            .handle_sms(&mut client, &mut pico, v.index as u32)
-                            .await;
-                    }
-                    _ => (),
-                },
-                pubsub::WaitResult::Lagged(b) => {
-                    info!("Urc Lagged messages: {}", b);
                 }
+                pico.set_led_low();
             },
         }
     }
@@ -327,7 +318,7 @@ impl at::PicoHW for Pico<'_> {
         // “AT+IPR” in document [1]
     }
 
-    fn uptime_millis(&mut self) -> i64 {
+    fn rtc_now_millis(&mut self) -> i64 {
         let dt = self.rtc.now().unwrap();
         let now = fasttime::DateTime {
             date: fasttime::Date {
@@ -344,4 +335,97 @@ impl at::PicoHW for Pico<'_> {
         };
         return (now.unix_timestamp_nanos() / 1_000_000) as i64;
     }
+
+    fn set_rtc_time(&mut self, millis: i64) {
+        self.rtc.set_datetime(millis_to_datetime(millis as u64).unwrap()).unwrap();
+    }
+}
+
+
+// NOTE: This is copied from https://github.com/embassy-rs/embassy/blob/main/embassy-rp/src/datetime/epoch.rs
+// TODO: update embassy-rp 0.9 -> 0.10
+const EPOCH_YEAR: u16 = 1970;
+const DAYS_IN_MONTH: [u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MS_PER_SECOND: u64 = 1000;
+const MS_PER_MINUTE: u64 = 60 * MS_PER_SECOND;
+const MS_PER_HOUR: u64 = 60 * MS_PER_MINUTE;
+const MS_PER_DAY: u64 = 24 * MS_PER_HOUR;
+const EPOCH_DAY_OF_WEEK: u8 = 4; // Thursday
+
+const fn is_leap_year(year: u16) -> bool {
+    (year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))
+}
+
+fn days_in_month(year: u16, month: u8) -> u8 {
+    if month == 2 && is_leap_year(year) {
+        29
+    } else {
+        DAYS_IN_MONTH[(month - 1) as usize]
+    }
+}
+
+fn day_of_week_from_days(days_since_epoch: u32) -> u8 {
+    ((days_since_epoch + EPOCH_DAY_OF_WEEK as u32) % 7) as u8
+}
+
+
+fn millis_to_datetime(millis: u64) -> Result<DateTime, &'static str> {
+    // Use u64 for initial division, then cast to u32 for subsequent calculations
+    // Max total_days for year 4095 is ~776,000, fits in u32
+    let total_days = (millis / MS_PER_DAY) as u32;
+    // remaining_ms is at most MS_PER_DAY - 1 = 86,399,999, fits in u32
+    let remaining_ms = (millis % MS_PER_DAY) as u32;
+
+    let hour = (remaining_ms / MS_PER_HOUR as u32) as u8;
+    let remaining_ms = remaining_ms % MS_PER_HOUR as u32;
+    let minute = (remaining_ms / MS_PER_MINUTE as u32) as u8;
+    let second = ((remaining_ms % MS_PER_MINUTE as u32) / MS_PER_SECOND as u32) as u8;
+
+    let day_of_week = match day_of_week_from_days(total_days) {
+        0 => DayOfWeek::Sunday,
+        1 => DayOfWeek::Monday,
+        2 => DayOfWeek::Tuesday,
+        3 => DayOfWeek::Wednesday,
+        4 => DayOfWeek::Thursday,
+        5 => DayOfWeek::Friday,
+        6 => DayOfWeek::Saturday,
+        _ => defmt::panic!(),
+    };
+
+    let mut year = EPOCH_YEAR;
+    let mut days_remaining = total_days;
+
+    loop {
+        let days_in_year: u32 = if is_leap_year(year) { 366 } else { 365 };
+        if days_remaining < days_in_year {
+            break;
+        }
+        days_remaining -= days_in_year;
+        year += 1;
+
+        if year > 4095 {
+            return Err("InvalidTimestamp");
+        }
+    }
+
+    let mut month = 1u8;
+    while month <= 12 {
+        let days_in_this_month = days_in_month(year, month) as u32;
+        if days_remaining < days_in_this_month {
+            break;
+        }
+        days_remaining -= days_in_this_month;
+        month += 1;
+    }
+    let day = (days_remaining + 1) as u8;
+
+    Ok(DateTime {
+        year,
+        month,
+        day,
+        day_of_week,
+        hour,
+        minute,
+        second,
+    })
 }
